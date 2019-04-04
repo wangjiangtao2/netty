@@ -49,6 +49,9 @@ public final class EchoServer {
         }
 
         // Configure the server.
+        // 创建两个线程组,专门用于网络事件的处理，Reactor线程组
+        // 用来接收客户端的连接， bossGroup线程组实际就是Acceptor线程池，
+        // 负责处理客户端的TCP连接请求，如果系统只有一个服务端端口需要监听，则建议bossGroup线程组线程数设置为1。
         EventLoopGroup bossGroup = new NioEventLoopGroup(1);
         EventLoopGroup workerGroup = new NioEventLoopGroup();
         final EchoServerHandler serverHandler = new EchoServerHandler();
