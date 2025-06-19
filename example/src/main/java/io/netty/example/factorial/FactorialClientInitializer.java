@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -27,6 +27,8 @@ import io.netty.handler.ssl.SslContext;
  */
 public class FactorialClientInitializer extends ChannelInitializer<SocketChannel> {
 
+    private static final int MAX_CONTENT_LENGTH = 65536;
+
     private final SslContext sslCtx;
 
     public FactorialClientInitializer(SslContext sslCtx) {
@@ -43,7 +45,7 @@ public class FactorialClientInitializer extends ChannelInitializer<SocketChannel
 
         // Enable stream compression (you can remove these two if unnecessary)
         pipeline.addLast(ZlibCodecFactory.newZlibEncoder(ZlibWrapper.GZIP));
-        pipeline.addLast(ZlibCodecFactory.newZlibDecoder(ZlibWrapper.GZIP));
+        pipeline.addLast(ZlibCodecFactory.newZlibDecoder(ZlibWrapper.GZIP, MAX_CONTENT_LENGTH));
 
         // Add the number codec first,
         pipeline.addLast(new BigIntegerDecoder());

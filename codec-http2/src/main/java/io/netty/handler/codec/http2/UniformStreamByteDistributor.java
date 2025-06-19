@@ -5,7 +5,7 @@
  * "License"); you may not use this file except in compliance with the License. You may obtain a
  * copy of the License at:
  *
- * http://www.apache.org/licenses/LICENSE-2.0
+ * https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software distributed under the License
  * is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
@@ -13,8 +13,6 @@
  * the License.
  */
 package io.netty.handler.codec.http2;
-
-import io.netty.util.internal.UnstableApi;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -34,7 +32,6 @@ import static java.lang.Math.min;
  * fewer streams may be written to in each call to {@link #distribute(int, Writer)}, doing this
  * should improve the goodput on each written stream.
  */
-@UnstableApi
 public final class UniformStreamByteDistributor implements StreamByteDistributor {
     private final Http2Connection.PropertyKey stateKey;
     private final Deque<State> queue = new ArrayDeque<State>(4);
@@ -159,7 +156,7 @@ public final class UniformStreamByteDistributor implements StreamByteDistributor
             //    we gave the state a chance to write zero length frames. We wait until updateStreamableBytes is
             //    called again before this state is allowed to write.
             windowNegative = windowSize < 0;
-            if (hasFrame && (windowSize > 0 || (windowSize == 0 && !writing))) {
+            if (hasFrame && (windowSize > 0 || windowSize == 0 && !writing)) {
                 addToQueue();
             }
         }

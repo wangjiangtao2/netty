@@ -1,11 +1,11 @@
 /*
- * Copyright 2018 The Netty Project
+ * Copyright 2024 The Netty Project
  *
  * The Netty Project licenses this file to you under the Apache License,
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -15,22 +15,25 @@
  */
 package io.netty.handler.ssl;
 
-import javax.net.ssl.SSLException;
+import javax.net.ssl.SSLPeerUnverifiedException;
 import javax.net.ssl.SSLSession;
 
-interface OpenSslSession extends SSLSession {
+/**
+ * {@link SSLSession} sub-type that is used by our native implementation.
+ */
+public interface OpenSslSession extends SSLSession {
 
     /**
-     * Finish the handshake and so init everything in the {@link OpenSslSession} that should be accessible by
-     * the user.
-     */
-    void handshakeFinished() throws SSLException;
-
-    /**
-     * Expand (or increase) the value returned by {@link #getApplicationBufferSize()} if necessary.
+     * Returns true if the peer has provided certificates during the handshake.
      * <p>
-     * This is only called in a synchronized block, so no need to use atomic operations.
-     * @param packetLengthDataOnly The packet size which exceeds the current {@link #getApplicationBufferSize()}.
+     * This method is similar to {@link SSLSession#getPeerCertificates()} but it does not throw a
+     * {@link SSLPeerUnverifiedException} if no certs are provided, making it more efficient to check if a mTLS
+     * connection is used.
+     *
+     * @return true if peer certificates are available.
      */
-    void tryExpandApplicationBufferSize(int packetLengthDataOnly);
+    boolean hasPeerCertificates();
+
+    @Override
+    OpenSslSessionContext getSessionContext();
 }

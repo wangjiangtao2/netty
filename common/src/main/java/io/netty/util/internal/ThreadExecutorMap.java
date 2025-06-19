@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -40,8 +40,8 @@ public final class ThreadExecutorMap {
     /**
      * Set the current {@link EventExecutor} that is used by the {@link Thread}.
      */
-    private static void setCurrentEventExecutor(EventExecutor executor) {
-        mappings.set(executor);
+    public static EventExecutor setCurrentExecutor(EventExecutor executor) {
+        return mappings.getAndSet(executor);
     }
 
     /**
@@ -69,11 +69,11 @@ public final class ThreadExecutorMap {
         return new Runnable() {
             @Override
             public void run() {
-                setCurrentEventExecutor(eventExecutor);
+                EventExecutor old = setCurrentExecutor(eventExecutor);
                 try {
                     command.run();
                 } finally {
-                    setCurrentEventExecutor(null);
+                    setCurrentExecutor(old);
                 }
             }
         };
@@ -84,7 +84,7 @@ public final class ThreadExecutorMap {
      * when called from within the {@link Runnable} during execution.
      */
     public static ThreadFactory apply(final ThreadFactory threadFactory, final EventExecutor eventExecutor) {
-        ObjectUtil.checkNotNull(threadFactory, "command");
+        ObjectUtil.checkNotNull(threadFactory, "threadFactory");
         ObjectUtil.checkNotNull(eventExecutor, "eventExecutor");
         return new ThreadFactory() {
             @Override

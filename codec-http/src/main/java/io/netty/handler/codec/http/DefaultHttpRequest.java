@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -15,6 +15,7 @@
  */
 package io.netty.handler.codec.http;
 
+import static io.netty.handler.codec.http.DefaultHttpHeadersFactory.headersFactory;
 import static io.netty.util.internal.ObjectUtil.checkNotNull;
 
 /**
@@ -33,7 +34,7 @@ public class DefaultHttpRequest extends DefaultHttpMessage implements HttpReques
      * @param uri         the URI or path of the request
      */
     public DefaultHttpRequest(HttpVersion httpVersion, HttpMethod method, String uri) {
-        this(httpVersion, method, uri, true);
+        this(httpVersion, method, uri, headersFactory().newHeaders());
     }
 
     /**
@@ -43,11 +44,26 @@ public class DefaultHttpRequest extends DefaultHttpMessage implements HttpReques
      * @param method            the HTTP method of the request
      * @param uri               the URI or path of the request
      * @param validateHeaders   validate the header names and values when adding them to the {@link HttpHeaders}
+     * @deprecated Prefer the {@link #DefaultHttpRequest(HttpVersion, HttpMethod, String)} constructor instead,
+     * to always have header validation enabled.
      */
+    @Deprecated
     public DefaultHttpRequest(HttpVersion httpVersion, HttpMethod method, String uri, boolean validateHeaders) {
-        super(httpVersion, validateHeaders, false);
-        this.method = checkNotNull(method, "method");
-        this.uri = checkNotNull(uri, "uri");
+        this(httpVersion, method, uri, headersFactory().withValidation(validateHeaders));
+    }
+
+    /**
+     * Creates a new instance.
+     *
+     * @param httpVersion       the HTTP version of the request
+     * @param method            the HTTP method of the request
+     * @param uri               the URI or path of the request
+     * @param headersFactory    the {@link HttpHeadersFactory} used to create the headers for this Request.
+     * The recommended default is {@link DefaultHttpHeadersFactory#headersFactory()}.
+     */
+    public DefaultHttpRequest(HttpVersion httpVersion, HttpMethod method, String uri,
+                              HttpHeadersFactory headersFactory) {
+        this(httpVersion, method, uri, headersFactory.newHeaders());
     }
 
     /**
@@ -88,19 +104,13 @@ public class DefaultHttpRequest extends DefaultHttpMessage implements HttpReques
 
     @Override
     public HttpRequest setMethod(HttpMethod method) {
-        if (method == null) {
-            throw new NullPointerException("method");
-        }
-        this.method = method;
+        this.method = checkNotNull(method, "method");
         return this;
     }
 
     @Override
     public HttpRequest setUri(String uri) {
-        if (uri == null) {
-            throw new NullPointerException("uri");
-        }
-        this.uri = uri;
+        this.uri = checkNotNull(uri, "uri");
         return this;
     }
 

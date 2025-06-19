@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -52,6 +52,8 @@ import java.util.List;
 public abstract class MessageToMessageDecoder<I> extends ChannelInboundHandlerAdapter {
 
     private final TypeParameterMatcher matcher;
+    private boolean decodeCalled;
+    private boolean messageProduced;
 
     /**
      * Create a new instance which will try to detect the types to match out of the type parameter of the class.
@@ -79,6 +81,7 @@ public abstract class MessageToMessageDecoder<I> extends ChannelInboundHandlerAd
 
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+        decodeCalled = true;
         CodecOutputList out = CodecOutputList.newInstance();
         try {
             if (acceptInboundMessage(msg)) {
@@ -97,12 +100,29 @@ public abstract class MessageToMessageDecoder<I> extends ChannelInboundHandlerAd
         } catch (Exception e) {
             throw new DecoderException(e);
         } finally {
-            int size = out.size();
-            for (int i = 0; i < size; i ++) {
-                ctx.fireChannelRead(out.getUnsafe(i));
+            try {
+                int size = out.size();
+                messageProduced |= size > 0;
+                for (int i = 0; i < size; i++) {
+                    ctx.fireChannelRead(out.getUnsafe(i));
+                }
+            } finally {
+                out.recycle();
             }
-            out.recycle();
         }
+    }
+
+    @Override
+    public void channelReadComplete(ChannelHandlerContext ctx) throws Exception {
+        if (!isSharable()) {
+            // Only use local vars if this decoder is not sharable as otherwise this is not safe to do.
+            if (decodeCalled && !messageProduced && !ctx.channel().config().isAutoRead()) {
+                ctx.read();
+            }
+            decodeCalled = false;
+            messageProduced = false;
+        }
+        ctx.fireChannelReadComplete();
     }
 
     /**

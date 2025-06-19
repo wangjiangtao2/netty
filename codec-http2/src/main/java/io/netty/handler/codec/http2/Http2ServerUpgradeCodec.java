@@ -5,7 +5,7 @@
  * "License"); you may not use this file except in compliance with the License. You may obtain a
  * copy of the License at:
  *
- * http://www.apache.org/licenses/LICENSE-2.0
+ * https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software distributed under the License
  * is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
@@ -17,14 +17,12 @@ package io.netty.handler.codec.http2;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufUtil;
 import io.netty.channel.ChannelHandler;
-import io.netty.channel.ChannelHandlerAdapter;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.base64.Base64;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpServerUpgradeHandler;
 import io.netty.util.CharsetUtil;
-import io.netty.util.internal.UnstableApi;
 import io.netty.util.internal.logging.InternalLogger;
 import io.netty.util.internal.logging.InternalLoggerFactory;
 
@@ -38,12 +36,10 @@ import static io.netty.handler.codec.http2.Http2CodecUtil.FRAME_HEADER_LENGTH;
 import static io.netty.handler.codec.http2.Http2CodecUtil.HTTP_UPGRADE_SETTINGS_HEADER;
 import static io.netty.handler.codec.http2.Http2CodecUtil.writeFrameHeader;
 import static io.netty.handler.codec.http2.Http2FrameTypes.SETTINGS;
-import static io.netty.util.internal.ObjectUtil.checkNotNull;
 
 /**
  * Server-side codec for performing a cleartext upgrade from HTTP/1.x to HTTP/2.
  */
-@UnstableApi
 public class Http2ServerUpgradeCodec implements HttpServerUpgradeHandler.UpgradeCodec {
 
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(Http2ServerUpgradeCodec.class);
@@ -130,7 +126,7 @@ public class Http2ServerUpgradeCodec implements HttpServerUpgradeHandler.Upgrade
             // Decode the HTTP2-Settings header and set the settings on the handler to make
             // sure everything is fine with the request.
             List<String> upgradeHeaders = upgradeRequest.headers().getAll(HTTP_UPGRADE_SETTINGS_HEADER);
-            if (upgradeHeaders.isEmpty() || upgradeHeaders.size() > 1) {
+            if (upgradeHeaders.size() != 1) {
                 throw new IllegalArgumentException("There must be 1 and only 1 "
                         + HTTP_UPGRADE_SETTINGS_HEADER + " header.");
             }
@@ -138,7 +134,7 @@ public class Http2ServerUpgradeCodec implements HttpServerUpgradeHandler.Upgrade
             // Everything looks good.
             return true;
         } catch (Throwable cause) {
-            logger.info("Error during upgrade to HTTP/2", cause);
+            logger.info("{} Error during upgrade to HTTP/2", ctx.channel(), cause);
             return false;
         }
     }
@@ -148,19 +144,19 @@ public class Http2ServerUpgradeCodec implements HttpServerUpgradeHandler.Upgrade
         try {
             // Add the HTTP/2 connection handler to the pipeline immediately following the current handler.
             ctx.pipeline().addAfter(ctx.name(), handlerName, connectionHandler);
-            connectionHandler.onHttpServerUpgrade(settings);
 
+            // Add also all extra handlers as these may handle events / messages produced by the connectionHandler.
+            // See https://github.com/netty/netty/issues/9314
+            if (handlers != null) {
+                final String name = ctx.pipeline().context(connectionHandler).name();
+                for (int i = handlers.length - 1; i >= 0; i--) {
+                    ctx.pipeline().addAfter(name, null, handlers[i]);
+                }
+            }
+            connectionHandler.onHttpServerUpgrade(settings);
         } catch (Http2Exception e) {
             ctx.fireExceptionCaught(e);
             ctx.close();
-            return;
-        }
-
-        if (handlers != null) {
-            final String name = ctx.pipeline().context(connectionHandler).name();
-            for (int i = handlers.length - 1; i >= 0; i--) {
-                ctx.pipeline().addAfter(name, null, handlers[i]);
-            }
         }
     }
 

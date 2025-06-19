@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -24,12 +24,16 @@ import io.netty.handler.codec.compression.ZlibWrapper;
 import io.netty.handler.codec.http.websocketx.BinaryWebSocketFrame;
 import io.netty.handler.codec.http.websocketx.ContinuationWebSocketFrame;
 import io.netty.handler.codec.http.websocketx.extensions.WebSocketExtension;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import java.util.Random;
 
 import static io.netty.handler.codec.http.websocketx.extensions.WebSocketExtensionFilter.*;
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class PerFrameDeflateEncoderTest {
 
@@ -39,7 +43,7 @@ public class PerFrameDeflateEncoderTest {
     public void testCompressedFrame() {
         EmbeddedChannel encoderChannel = new EmbeddedChannel(new PerFrameDeflateEncoder(9, 15, false));
         EmbeddedChannel decoderChannel = new EmbeddedChannel(
-                ZlibCodecFactory.newZlibDecoder(ZlibWrapper.NONE));
+                ZlibCodecFactory.newZlibDecoder(ZlibWrapper.NONE, 0));
 
         // initialize
         byte[] payload = new byte[300];
@@ -57,7 +61,7 @@ public class PerFrameDeflateEncoderTest {
         assertEquals(WebSocketExtension.RSV1 | WebSocketExtension.RSV3, compressedFrame.rsv());
 
         assertTrue(decoderChannel.writeInbound(compressedFrame.content()));
-        assertTrue(decoderChannel.writeInbound(Unpooled.wrappedBuffer(DeflateDecoder.FRAME_TAIL)));
+        assertTrue(decoderChannel.writeInbound(DeflateDecoder.FRAME_TAIL.duplicate()));
         ByteBuf uncompressedPayload = decoderChannel.readInbound();
         assertEquals(300, uncompressedPayload.readableBytes());
 
@@ -98,7 +102,7 @@ public class PerFrameDeflateEncoderTest {
     public void testFramementedFrame() {
         EmbeddedChannel encoderChannel = new EmbeddedChannel(new PerFrameDeflateEncoder(9, 15, false));
         EmbeddedChannel decoderChannel = new EmbeddedChannel(
-                ZlibCodecFactory.newZlibDecoder(ZlibWrapper.NONE));
+                ZlibCodecFactory.newZlibDecoder(ZlibWrapper.NONE, 0));
 
         // initialize
         byte[] payload1 = new byte[100];
@@ -135,7 +139,7 @@ public class PerFrameDeflateEncoderTest {
         assertTrue(compressedFrame3.isFinalFragment());
 
         assertTrue(decoderChannel.writeInbound(compressedFrame1.content()));
-        assertTrue(decoderChannel.writeInbound(Unpooled.wrappedBuffer(DeflateDecoder.FRAME_TAIL)));
+        assertTrue(decoderChannel.writeInbound(DeflateDecoder.FRAME_TAIL.duplicate()));
         ByteBuf uncompressedPayload1 = decoderChannel.readInbound();
         byte[] finalPayload1 = new byte[100];
         uncompressedPayload1.readBytes(finalPayload1);
@@ -143,7 +147,7 @@ public class PerFrameDeflateEncoderTest {
         uncompressedPayload1.release();
 
         assertTrue(decoderChannel.writeInbound(compressedFrame2.content()));
-        assertTrue(decoderChannel.writeInbound(Unpooled.wrappedBuffer(DeflateDecoder.FRAME_TAIL)));
+        assertTrue(decoderChannel.writeInbound(DeflateDecoder.FRAME_TAIL.duplicate()));
         ByteBuf uncompressedPayload2 = decoderChannel.readInbound();
         byte[] finalPayload2 = new byte[100];
         uncompressedPayload2.readBytes(finalPayload2);
@@ -151,7 +155,7 @@ public class PerFrameDeflateEncoderTest {
         uncompressedPayload2.release();
 
         assertTrue(decoderChannel.writeInbound(compressedFrame3.content()));
-        assertTrue(decoderChannel.writeInbound(Unpooled.wrappedBuffer(DeflateDecoder.FRAME_TAIL)));
+        assertTrue(decoderChannel.writeInbound(DeflateDecoder.FRAME_TAIL.duplicate()));
         ByteBuf uncompressedPayload3 = decoderChannel.readInbound();
         byte[] finalPayload3 = new byte[100];
         uncompressedPayload3.readBytes(finalPayload3);

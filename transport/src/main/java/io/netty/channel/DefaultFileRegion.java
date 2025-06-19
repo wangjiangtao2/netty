@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -15,10 +15,9 @@
  */
 package io.netty.channel;
 
-import static io.netty.util.internal.ObjectUtil.checkPositiveOrZero;
-
 import io.netty.util.AbstractReferenceCounted;
 import io.netty.util.IllegalReferenceCountException;
+import io.netty.util.internal.ObjectUtil;
 import io.netty.util.internal.logging.InternalLogger;
 import io.netty.util.internal.logging.InternalLoggerFactory;
 
@@ -27,6 +26,8 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.channels.FileChannel;
 import java.nio.channels.WritableByteChannel;
+
+import static io.netty.util.internal.ObjectUtil.checkPositiveOrZero;
 
 /**
  * Default {@link FileRegion} implementation which transfer data from a {@link FileChannel} or {@link File}.
@@ -46,39 +47,29 @@ public class DefaultFileRegion extends AbstractReferenceCounted implements FileR
     /**
      * Create a new instance
      *
-     * @param file      the {@link FileChannel} which should be transferred
-     * @param position  the position from which the transfer should start
-     * @param count     the number of bytes to transfer
+     * @param fileChannel      the {@link FileChannel} which should be transferred
+     * @param position         the position from which the transfer should start
+     * @param count            the number of bytes to transfer
      */
-    public DefaultFileRegion(FileChannel file, long position, long count) {
-        if (file == null) {
-            throw new NullPointerException("file");
-        }
-        checkPositiveOrZero(position, "position");
-        checkPositiveOrZero(count, "count");
-        this.file = file;
-        this.position = position;
-        this.count = count;
-        f = null;
+    public DefaultFileRegion(FileChannel fileChannel, long position, long count) {
+        this.file = ObjectUtil.checkNotNull(fileChannel, "fileChannel");
+        this.position = checkPositiveOrZero(position, "position");
+        this.count = checkPositiveOrZero(count, "count");
+        this.f = null;
     }
 
     /**
      * Create a new instance using the given {@link File}. The {@link File} will be opened lazily or
      * explicitly via {@link #open()}.
      *
-     * @param f         the {@link File} which should be transferred
-     * @param position  the position from which the transfer should start
-     * @param count     the number of bytes to transfer
+     * @param file         the {@link File} which should be transferred
+     * @param position     the position from which the transfer should start
+     * @param count        the number of bytes to transfer
      */
-    public DefaultFileRegion(File f, long position, long count) {
-        if (f == null) {
-            throw new NullPointerException("f");
-        }
-        checkPositiveOrZero(position, "position");
-        checkPositiveOrZero(count, "count");
-        this.position = position;
-        this.count = count;
-        this.f = f;
+    public DefaultFileRegion(File file, long position, long count) {
+        this.f = ObjectUtil.checkNotNull(file, "file");
+        this.position = checkPositiveOrZero(position, "position");
+        this.count = checkPositiveOrZero(count, "count");
     }
 
     /**
@@ -161,9 +152,7 @@ public class DefaultFileRegion extends AbstractReferenceCounted implements FileR
         try {
             file.close();
         } catch (IOException e) {
-            if (logger.isWarnEnabled()) {
-                logger.warn("Failed to close a file.", e);
-            }
+            logger.warn("Failed to close a file.", e);
         }
     }
 

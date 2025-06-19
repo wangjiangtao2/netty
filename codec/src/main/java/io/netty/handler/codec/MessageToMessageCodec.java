@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -54,6 +54,24 @@ import java.util.List;
  */
 public abstract class MessageToMessageCodec<INBOUND_IN, OUTBOUND_IN> extends ChannelDuplexHandler {
 
+    private final MessageToMessageDecoder<Object> decoder = new MessageToMessageDecoder<Object>() {
+
+        @Override
+        public boolean acceptInboundMessage(Object msg) throws Exception {
+            return MessageToMessageCodec.this.acceptInboundMessage(msg);
+        }
+
+        @Override
+        @SuppressWarnings("unchecked")
+        protected void decode(ChannelHandlerContext ctx, Object msg, List<Object> out) throws Exception {
+            MessageToMessageCodec.this.decode(ctx, (INBOUND_IN) msg, out);
+        }
+
+        @Override
+        public boolean isSharable() {
+            return MessageToMessageCodec.this.isSharable();
+        }
+    };
     private final MessageToMessageEncoder<Object> encoder = new MessageToMessageEncoder<Object>() {
 
         @Override
@@ -66,19 +84,10 @@ public abstract class MessageToMessageCodec<INBOUND_IN, OUTBOUND_IN> extends Cha
         protected void encode(ChannelHandlerContext ctx, Object msg, List<Object> out) throws Exception {
             MessageToMessageCodec.this.encode(ctx, (OUTBOUND_IN) msg, out);
         }
-    };
-
-    private final MessageToMessageDecoder<Object> decoder = new MessageToMessageDecoder<Object>() {
 
         @Override
-        public boolean acceptInboundMessage(Object msg) throws Exception {
-            return MessageToMessageCodec.this.acceptInboundMessage(msg);
-        }
-
-        @Override
-        @SuppressWarnings("unchecked")
-        protected void decode(ChannelHandlerContext ctx, Object msg, List<Object> out) throws Exception {
-            MessageToMessageCodec.this.decode(ctx, (INBOUND_IN) msg, out);
+        public boolean isSharable() {
+            return MessageToMessageCodec.this.isSharable();
         }
     };
 
@@ -109,6 +118,11 @@ public abstract class MessageToMessageCodec<INBOUND_IN, OUTBOUND_IN> extends Cha
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
         decoder.channelRead(ctx, msg);
+    }
+
+    @Override
+    public void channelReadComplete(ChannelHandlerContext ctx) throws Exception {
+        decoder.channelReadComplete(ctx);
     }
 
     @Override

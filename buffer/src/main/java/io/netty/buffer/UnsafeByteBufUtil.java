@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -34,6 +34,7 @@ import static io.netty.util.internal.PlatformDependent.BIG_ENDIAN_NATIVE_ORDER;
 final class UnsafeByteBufUtil {
     private static final boolean UNALIGNED = PlatformDependent.isUnaligned();
     private static final byte ZERO = 0;
+    private static final int MAX_HAND_ROLLED_SET_ZERO_BYTES = 64;
 
     static byte getByte(long address) {
         return PlatformDependent.getByte(address);
@@ -424,11 +425,28 @@ final class UnsafeByteBufUtil {
         }
     }
 
+    private static void batchSetZero(byte[] data, int index, int length) {
+        int longBatches = length / 8;
+        for (int i = 0; i < longBatches; i++) {
+            PlatformDependent.putLong(data, index, ZERO);
+            index += 8;
+        }
+        final int remaining = length % 8;
+        for (int i = 0; i < remaining; i++) {
+            PlatformDependent.putByte(data, index + i, ZERO);
+        }
+    }
+
     static void setZero(byte[] array, int index, int length) {
         if (length == 0) {
             return;
         }
-        PlatformDependent.setMemory(array, index, length, ZERO);
+        // fast-path for small writes to avoid thread-state change JDK's handling
+        if (UNALIGNED && length <= MAX_HAND_ROLLED_SET_ZERO_BYTES) {
+            batchSetZero(array, index, length);
+        } else {
+            PlatformDependent.setMemory(array, index, length, ZERO);
+        }
     }
 
     static ByteBuf copy(AbstractByteBuf buf, long addr, int index, int length) {
@@ -532,6 +550,13 @@ final class UnsafeByteBufUtil {
 
     static void setBytes(AbstractByteBuf buf, long addr, int index, byte[] src, int srcIndex, int length) {
         buf.checkIndex(index, length);
+        // we need to check not null for src as it may cause the JVM crash
+        // See https://github.com/netty/netty/issues/10791
+        checkNotNull(src, "src");
+        if (isOutOfBounds(srcIndex, length, src.length)) {
+            throw new IndexOutOfBoundsException("srcIndex: " + srcIndex);
+        }
+
         if (length != 0) {
             PlatformDependent.copyMemory(src, srcIndex, addr, length);
         }
@@ -611,12 +636,47 @@ final class UnsafeByteBufUtil {
         } while (outLen > 0);
     }
 
+    private static void batchSetZero(long addr, int length) {
+        int longBatches = length / 8;
+        for (int i = 0; i < longBatches; i++) {
+            PlatformDependent.putLong(addr, ZERO);
+            addr += 8;
+        }
+        final int remaining = length % 8;
+        for (int i = 0; i < remaining; i++) {
+            PlatformDependent.putByte(addr + i, ZERO);
+        }
+    }
+
     static void setZero(long addr, int length) {
         if (length == 0) {
             return;
         }
+        // fast-path for small writes to avoid thread-state change JDK's handling
+        if (length <= MAX_HAND_ROLLED_SET_ZERO_BYTES) {
+            if (!UNALIGNED) {
+                // write bytes until the address is aligned
+                int bytesToGetAligned = zeroTillAligned(addr, length);
+                addr += bytesToGetAligned;
+                length -= bytesToGetAligned;
+                if (length == 0) {
+                    return;
+                }
+                assert addr % 8 == 0;
+            }
+            batchSetZero(addr, length);
+        } else {
+            PlatformDependent.setMemory(addr, length, ZERO);
+        }
+    }
 
-        PlatformDependent.setMemory(addr, length, ZERO);
+    private static int zeroTillAligned(long addr, int length) {
+        // write bytes until the address is aligned
+        int bytesToGetAligned = Math.min((int) (addr % 8), length);
+        for (int i = 0; i < bytesToGetAligned; i++) {
+            PlatformDependent.putByte(addr + i, ZERO);
+        }
+        return bytesToGetAligned;
     }
 
     static UnpooledUnsafeDirectByteBuf newUnsafeDirectByteBuf(

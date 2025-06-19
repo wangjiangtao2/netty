@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -18,14 +18,18 @@ package io.netty.handler.codec.http;
 import io.netty.util.AsciiString;
 
 import static io.netty.util.internal.MathUtil.findNextPositivePowerOfTwo;
-import static io.netty.util.internal.ObjectUtil.checkNotNull;
+import static io.netty.util.internal.ObjectUtil.checkNonEmptyAfterTrim;
 
 /**
  * The request method of HTTP or its derived protocols, such as
- * <a href="http://en.wikipedia.org/wiki/Real_Time_Streaming_Protocol">RTSP</a> and
- * <a href="http://en.wikipedia.org/wiki/Internet_Content_Adaptation_Protocol">ICAP</a>.
+ * <a href="https://en.wikipedia.org/wiki/Real_Time_Streaming_Protocol">RTSP</a> and
+ * <a href="https://en.wikipedia.org/wiki/Internet_Content_Adaptation_Protocol">ICAP</a>.
  */
 public class HttpMethod implements Comparable<HttpMethod> {
+
+    private static final String GET_STRING = "GET";
+    private static final String POST_STRING = "POST";
+
     /**
      * The OPTIONS method represents a request for information about the communication options
      * available on the request/response chain identified by the Request-URI. This method allows
@@ -41,7 +45,7 @@ public class HttpMethod implements Comparable<HttpMethod> {
      * produced data which shall be returned as the entity in the response and not the source text
      * of the process, unless that text happens to be the output of the process.
      */
-    public static final HttpMethod GET = new HttpMethod("GET");
+    public static final HttpMethod GET = new HttpMethod(GET_STRING);
 
     /**
      * The HEAD method is identical to GET except that the server MUST NOT return a message-body
@@ -54,7 +58,7 @@ public class HttpMethod implements Comparable<HttpMethod> {
      * request as a new subordinate of the resource identified by the Request-URI in the
      * Request-Line.
      */
-    public static final HttpMethod POST = new HttpMethod("POST");
+    public static final HttpMethod POST = new HttpMethod(POST_STRING);
 
     /**
      * The PUT method requests that the enclosed entity be stored under the supplied Request-URI.
@@ -106,6 +110,14 @@ public class HttpMethod implements Comparable<HttpMethod> {
      * will be returned.  Otherwise, a new instance will be returned.
      */
     public static HttpMethod valueOf(String name) {
+        // fast-path
+        if (name == GET_STRING) {
+            return GET;
+        }
+        if (name == POST_STRING) {
+            return POST;
+        }
+        // "slow"-path
         HttpMethod result = methodMap.get(name);
         return result != null ? result : new HttpMethod(name);
     }
@@ -116,22 +128,16 @@ public class HttpMethod implements Comparable<HttpMethod> {
      * Creates a new HTTP method with the specified name.  You will not need to
      * create a new method unless you are implementing a protocol derived from
      * HTTP, such as
-     * <a href="http://en.wikipedia.org/wiki/Real_Time_Streaming_Protocol">RTSP</a> and
-     * <a href="http://en.wikipedia.org/wiki/Internet_Content_Adaptation_Protocol">ICAP</a>
+     * <a href="https://en.wikipedia.org/wiki/Real_Time_Streaming_Protocol">RTSP</a> and
+     * <a href="https://en.wikipedia.org/wiki/Internet_Content_Adaptation_Protocol">ICAP</a>
      */
     public HttpMethod(String name) {
-        name = checkNotNull(name, "name").trim();
-        if (name.isEmpty()) {
-            throw new IllegalArgumentException("empty name");
+        name = checkNonEmptyAfterTrim(name, "name");
+        int index = HttpUtil.validateToken(name);
+        if (index != -1) {
+            throw new IllegalArgumentException(
+                    "Illegal character in HTTP Method: 0x" + Integer.toHexString(name.charAt(index)));
         }
-
-        for (int i = 0; i < name.length(); i ++) {
-            char c = name.charAt(i);
-            if (Character.isISOControl(c) || Character.isWhitespace(c)) {
-                throw new IllegalArgumentException("invalid character in name");
-            }
-        }
-
         this.name = AsciiString.cached(name);
     }
 

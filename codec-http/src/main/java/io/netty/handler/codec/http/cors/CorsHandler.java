@@ -5,7 +5,7 @@
  * 2.0 (the "License"); you may not use this file except in compliance with the
  * License. You may obtain a copy of the License at:
  *
- * http://www.apache.org/licenses/LICENSE-2.0
+ * https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -15,6 +15,7 @@
  */
 package io.netty.handler.codec.http.cors;
 
+import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
@@ -24,6 +25,7 @@ import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpHeaders;
+import io.netty.handler.codec.http.DefaultHttpHeadersFactory;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpUtil;
@@ -41,7 +43,7 @@ import static io.netty.util.internal.ObjectUtil.checkNonEmpty;
 import static io.netty.util.internal.ObjectUtil.checkNotNull;
 
 /**
- * Handles <a href="http://www.w3.org/TR/cors/">Cross Origin Resource Sharing</a> (CORS) requests.
+ * Handles <a href="https://www.w3.org/TR/cors/">Cross Origin Resource Sharing</a> (CORS) requests.
  * <p>
  * This handler can be configured using one or more {@link CorsConfig}, please
  * refer to this class for details about the configuration options available.
@@ -55,7 +57,7 @@ public class CorsHandler extends ChannelDuplexHandler {
 
     private HttpRequest request;
     private final List<CorsConfig> configList;
-    private boolean isShortCircuit;
+    private final boolean isShortCircuit;
 
     /**
      * Creates a new instance with a single {@link CorsConfig}.
@@ -69,7 +71,7 @@ public class CorsHandler extends ChannelDuplexHandler {
      * config matches a certain origin, the first in the List will be used.
      *
      * @param configList     List of {@link CorsConfig}
-     * @param isShortCircuit Same as {@link CorsConfig#shortCircuit} but applicable to all supplied configs.
+     * @param isShortCircuit Same as {@link CorsConfig#isShortCircuit} but applicable to all supplied configs.
      */
     public CorsHandler(final List<CorsConfig> configList, boolean isShortCircuit) {
         checkNonEmpty(configList, "configList");
@@ -96,13 +98,19 @@ public class CorsHandler extends ChannelDuplexHandler {
     }
 
     private void handlePreflight(final ChannelHandlerContext ctx, final HttpRequest request) {
-        final HttpResponse response = new DefaultFullHttpResponse(request.protocolVersion(), OK, true, true);
+        final HttpResponse response = new DefaultFullHttpResponse(
+                request.protocolVersion(),
+                OK,
+                Unpooled.buffer(0),
+                DefaultHttpHeadersFactory.headersFactory().withCombiningHeaders(true),
+                DefaultHttpHeadersFactory.trailersFactory().withCombiningHeaders(true));
         if (setOrigin(response)) {
             setAllowMethods(response);
             setAllowHeaders(response);
             setAllowCredentials(response);
             setMaxAge(response);
             setPreflightHeaders(response);
+            setAllowPrivateNetwork(response);
         }
         if (!response.headers().contains(HttpHeaderNames.CONTENT_LENGTH)) {
             response.headers().set(HttpHeaderNames.CONTENT_LENGTH, HttpHeaderValues.ZERO);
@@ -214,6 +222,16 @@ public class CorsHandler extends ChannelDuplexHandler {
         response.headers().set(HttpHeaderNames.ACCESS_CONTROL_MAX_AGE, config.maxAge());
     }
 
+    private void setAllowPrivateNetwork(final HttpResponse response) {
+        if (request.headers().contains(HttpHeaderNames.ACCESS_CONTROL_REQUEST_PRIVATE_NETWORK)) {
+            if (config.isPrivateNetworkAllowed()) {
+                response.headers().set(HttpHeaderNames.ACCESS_CONTROL_ALLOW_PRIVATE_NETWORK, "true");
+            } else {
+                response.headers().set(HttpHeaderNames.ACCESS_CONTROL_ALLOW_PRIVATE_NETWORK, "false");
+            }
+        }
+    }
+
     @Override
     public void write(final ChannelHandlerContext ctx, final Object msg, final ChannelPromise promise)
             throws Exception {
@@ -228,7 +246,8 @@ public class CorsHandler extends ChannelDuplexHandler {
     }
 
     private static void forbidden(final ChannelHandlerContext ctx, final HttpRequest request) {
-        HttpResponse response = new DefaultFullHttpResponse(request.protocolVersion(), FORBIDDEN);
+        HttpResponse response = new DefaultFullHttpResponse(
+                request.protocolVersion(), FORBIDDEN, ctx.alloc().buffer(0));
         response.headers().set(HttpHeaderNames.CONTENT_LENGTH, HttpHeaderValues.ZERO);
         release(request);
         respond(ctx, request, response);

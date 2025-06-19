@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -23,9 +23,26 @@ import java.util.ArrayDeque;
 import java.util.List;
 import java.util.Queue;
 
+import static io.netty.handler.codec.http.HttpObjectDecoder.DEFAULT_MAX_CHUNK_SIZE;
+import static io.netty.handler.codec.http.HttpObjectDecoder.DEFAULT_MAX_HEADER_SIZE;
+import static io.netty.handler.codec.http.HttpObjectDecoder.DEFAULT_MAX_INITIAL_LINE_LENGTH;
+import static io.netty.handler.codec.http.HttpObjectDecoder.DEFAULT_VALIDATE_HEADERS;
+
 /**
  * A combination of {@link HttpRequestDecoder} and {@link HttpResponseEncoder}
  * which enables easier server side HTTP implementation.
+ *
+ * <h3>Header Validation</h3>
+ *
+ * It is recommended to always enable header validation.
+ * <p>
+ * Without header validation, your system can become vulnerable to
+ * <a href="https://cwe.mitre.org/data/definitions/113.html">
+ *     CWE-113: Improper Neutralization of CRLF Sequences in HTTP Headers ('HTTP Response Splitting')
+ * </a>.
+ * <p>
+ * This recommendation stands even when both peers in the HTTP exchange are trusted,
+ * as it helps with defence-in-depth.
  *
  * @see HttpClientCodec
  */
@@ -37,38 +54,97 @@ public final class HttpServerCodec extends CombinedChannelDuplexHandler<HttpRequ
 
     /**
      * Creates a new instance with the default decoder options
-     * ({@code maxInitialLineLength (4096}}, {@code maxHeaderSize (8192)}, and
+     * ({@code maxInitialLineLength (4096)}, {@code maxHeaderSize (8192)}, and
      * {@code maxChunkSize (8192)}).
      */
     public HttpServerCodec() {
-        this(4096, 8192, 8192);
+        this(DEFAULT_MAX_INITIAL_LINE_LENGTH, DEFAULT_MAX_HEADER_SIZE, DEFAULT_MAX_CHUNK_SIZE);
     }
 
     /**
      * Creates a new instance with the specified decoder options.
      */
     public HttpServerCodec(int maxInitialLineLength, int maxHeaderSize, int maxChunkSize) {
-        init(new HttpServerRequestDecoder(maxInitialLineLength, maxHeaderSize, maxChunkSize),
-                new HttpServerResponseEncoder());
+        this(new HttpDecoderConfig()
+                .setMaxInitialLineLength(maxInitialLineLength)
+                .setMaxHeaderSize(maxHeaderSize)
+                .setMaxChunkSize(maxChunkSize));
     }
 
     /**
      * Creates a new instance with the specified decoder options.
+     *
+     * @deprecated Prefer the {@link #HttpServerCodec(HttpDecoderConfig)} constructor,
+     * to always enable header validation.
      */
+    @Deprecated
     public HttpServerCodec(int maxInitialLineLength, int maxHeaderSize, int maxChunkSize, boolean validateHeaders) {
-        init(new HttpServerRequestDecoder(maxInitialLineLength, maxHeaderSize, maxChunkSize, validateHeaders),
-                new HttpServerResponseEncoder());
+        this(new HttpDecoderConfig()
+                .setMaxInitialLineLength(maxInitialLineLength)
+                .setMaxHeaderSize(maxHeaderSize)
+                .setMaxChunkSize(maxChunkSize)
+                .setValidateHeaders(validateHeaders));
     }
 
     /**
      * Creates a new instance with the specified decoder options.
+     *
+     * @deprecated Prefer the {@link #HttpServerCodec(HttpDecoderConfig)} constructor, to always enable header
+     * validation.
      */
+    @Deprecated
     public HttpServerCodec(int maxInitialLineLength, int maxHeaderSize, int maxChunkSize, boolean validateHeaders,
                            int initialBufferSize) {
-        init(
-          new HttpServerRequestDecoder(maxInitialLineLength, maxHeaderSize, maxChunkSize,
-                  validateHeaders, initialBufferSize),
-          new HttpServerResponseEncoder());
+        this(new HttpDecoderConfig()
+                .setMaxInitialLineLength(maxInitialLineLength)
+                .setMaxHeaderSize(maxHeaderSize)
+                .setMaxChunkSize(maxChunkSize)
+                .setValidateHeaders(validateHeaders)
+                .setInitialBufferSize(initialBufferSize));
+    }
+
+    /**
+     * Creates a new instance with the specified decoder options.
+     *
+     * @deprecated Prefer the {@link #HttpServerCodec(HttpDecoderConfig)} constructor,
+     * to always enable header validation.
+     */
+    @Deprecated
+    public HttpServerCodec(int maxInitialLineLength, int maxHeaderSize, int maxChunkSize, boolean validateHeaders,
+                           int initialBufferSize, boolean allowDuplicateContentLengths) {
+        this(new HttpDecoderConfig()
+                .setMaxInitialLineLength(maxInitialLineLength)
+                .setMaxHeaderSize(maxHeaderSize)
+                .setMaxChunkSize(maxChunkSize)
+                .setValidateHeaders(validateHeaders)
+                .setInitialBufferSize(initialBufferSize)
+                .setAllowDuplicateContentLengths(allowDuplicateContentLengths));
+    }
+
+    /**
+     * Creates a new instance with the specified decoder options.
+     *
+     * @deprecated Prefer the {@link #HttpServerCodec(HttpDecoderConfig)} constructor,
+     * to always enable header validation.
+     */
+    @Deprecated
+    public HttpServerCodec(int maxInitialLineLength, int maxHeaderSize, int maxChunkSize, boolean validateHeaders,
+                           int initialBufferSize, boolean allowDuplicateContentLengths, boolean allowPartialChunks) {
+        this(new HttpDecoderConfig()
+                .setMaxInitialLineLength(maxInitialLineLength)
+                .setMaxHeaderSize(maxHeaderSize)
+                .setMaxChunkSize(maxChunkSize)
+                .setValidateHeaders(validateHeaders)
+                .setInitialBufferSize(initialBufferSize)
+                .setAllowDuplicateContentLengths(allowDuplicateContentLengths)
+                .setAllowPartialChunks(allowPartialChunks));
+    }
+
+    /**
+     * Creates a new instance with the specified decoder configuration.
+     */
+    public HttpServerCodec(HttpDecoderConfig config) {
+        init(new HttpServerRequestDecoder(config), new HttpServerResponseEncoder());
     }
 
     /**
@@ -81,20 +157,8 @@ public final class HttpServerCodec extends CombinedChannelDuplexHandler<HttpRequ
     }
 
     private final class HttpServerRequestDecoder extends HttpRequestDecoder {
-
-        HttpServerRequestDecoder(int maxInitialLineLength, int maxHeaderSize, int maxChunkSize) {
-            super(maxInitialLineLength, maxHeaderSize, maxChunkSize);
-        }
-
-        HttpServerRequestDecoder(int maxInitialLineLength, int maxHeaderSize, int maxChunkSize,
-                                        boolean validateHeaders) {
-            super(maxInitialLineLength, maxHeaderSize, maxChunkSize, validateHeaders);
-        }
-
-        HttpServerRequestDecoder(int maxInitialLineLength, int maxHeaderSize, int maxChunkSize,
-
-                                        boolean validateHeaders, int initialBufferSize) {
-            super(maxInitialLineLength, maxHeaderSize, maxChunkSize, validateHeaders, initialBufferSize);
+        HttpServerRequestDecoder(HttpDecoderConfig config) {
+            super(config);
         }
 
         @Override

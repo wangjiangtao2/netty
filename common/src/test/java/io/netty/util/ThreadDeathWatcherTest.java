@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -16,21 +16,23 @@
 
 package io.netty.util;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static org.hamcrest.CoreMatchers.is;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.fail;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 public class ThreadDeathWatcherTest {
 
-    @Test(timeout = 10000)
+    @Test
+    @Timeout(value = 10000, unit = TimeUnit.MILLISECONDS)
     public void testWatch() throws Exception {
         final CountDownLatch latch = new CountDownLatch(1);
         final Thread t = new Thread() {
@@ -66,7 +68,7 @@ public class ThreadDeathWatcherTest {
         ThreadDeathWatcher.watch(t, task);
 
         // As long as the thread is alive, the task should not run.
-        assertThat(latch.await(750, TimeUnit.MILLISECONDS), is(false));
+        assertFalse(latch.await(750, TimeUnit.MILLISECONDS));
 
         // Interrupt the thread to terminate it.
         t.interrupt();
@@ -75,7 +77,8 @@ public class ThreadDeathWatcherTest {
         latch.await();
     }
 
-    @Test(timeout = 10000)
+    @Test
+    @Timeout(value = 10000, unit = TimeUnit.MILLISECONDS)
     public void testUnwatch() throws Exception {
         final AtomicBoolean run = new AtomicBoolean();
         final Thread t = new Thread() {
@@ -111,13 +114,14 @@ public class ThreadDeathWatcherTest {
         t.join();
 
         // Wait until the watcher thread terminates itself.
-        assertThat(ThreadDeathWatcher.awaitInactivity(Long.MAX_VALUE, TimeUnit.SECONDS), is(true));
+        assertTrue(ThreadDeathWatcher.awaitInactivity(Long.MAX_VALUE, TimeUnit.SECONDS));
 
         // And the task should not run.
-        assertThat(run.get(), is(false));
+        assertFalse(run.get());
     }
 
-    @Test(timeout = 2000)
+    @Test
+    @Timeout(value = 2000, unit = TimeUnit.MILLISECONDS)
     public void testThreadGroup() throws InterruptedException {
         final ThreadGroup group = new ThreadGroup("group");
         final AtomicReference<ThreadGroup> capturedGroup = new AtomicReference<ThreadGroup>();

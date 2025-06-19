@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -15,21 +15,27 @@
  */
 package io.netty.handler.ssl;
 
+import io.netty.util.internal.EmptyArrays;
+import io.netty.util.internal.SuppressJava6Requirement;
+
 import javax.net.ssl.ExtendedSSLSession;
 import javax.net.ssl.SSLException;
 import javax.net.ssl.SSLPeerUnverifiedException;
-import javax.net.ssl.SSLSessionContext;
+import javax.net.ssl.SSLSessionBindingEvent;
+import javax.net.ssl.SSLSessionBindingListener;
 import javax.security.cert.X509Certificate;
 import java.security.Principal;
 import java.security.cert.Certificate;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 /**
- * Delegates all operations to a wrapped {@link OpenSslSession} except the methods defined by {@link ExtendedSSLSession}
- * itself.
+ * Delegates all operations to a wrapped {@link OpenSslInternalSession} except the methods defined by
+ * {@link ExtendedSSLSession} itself.
  */
-abstract class ExtendedOpenSslSession extends ExtendedSSLSession implements OpenSslSession {
+@SuppressJava6Requirement(reason = "Usage guarded by java version check")
+abstract class ExtendedOpenSslSession extends ExtendedSSLSession implements OpenSslInternalSession {
 
     // TODO: use OpenSSL API to actually fetch the real data but for now just do what Conscrypt does:
     // https://github.com/google/conscrypt/blob/1.2.0/common/
@@ -37,15 +43,17 @@ abstract class ExtendedOpenSslSession extends ExtendedSSLSession implements Open
     private static final String[] LOCAL_SUPPORTED_SIGNATURE_ALGORITHMS = {
             "SHA512withRSA", "SHA512withECDSA", "SHA384withRSA", "SHA384withECDSA", "SHA256withRSA",
             "SHA256withECDSA", "SHA224withRSA", "SHA224withECDSA", "SHA1withRSA", "SHA1withECDSA",
+            "RSASSA-PSS",
     };
 
-    private final OpenSslSession wrapped;
+    private final OpenSslInternalSession wrapped;
 
-    ExtendedOpenSslSession(OpenSslSession wrapped) {
+    ExtendedOpenSslSession(OpenSslInternalSession wrapped) {
         this.wrapped = wrapped;
     }
 
     // Use rawtypes an unchecked override to be able to also work on java7.
+    @Override
     @SuppressWarnings({ "unchecked", "rawtypes" })
     public abstract List getRequestedServerNames();
 
@@ -57,8 +65,34 @@ abstract class ExtendedOpenSslSession extends ExtendedSSLSession implements Open
     }
 
     @Override
-    public final void handshakeFinished() throws SSLException {
-        wrapped.handshakeFinished();
+    public void prepareHandshake() {
+        wrapped.prepareHandshake();
+    }
+
+    @Override
+    public Map<String, Object> keyValueStorage() {
+        return wrapped.keyValueStorage();
+    }
+
+    @Override
+    public OpenSslSessionId sessionId() {
+        return wrapped.sessionId();
+    }
+
+    @Override
+    public void setSessionDetails(long creationTime, long lastAccessedTime, OpenSslSessionId id,
+                                  Map<String, Object> keyValueStorage) {
+        wrapped.setSessionDetails(creationTime, lastAccessedTime, id, keyValueStorage);
+    }
+
+    @Override
+    public final void setLocalCertificate(Certificate[] localCertificate) {
+        wrapped.setLocalCertificate(localCertificate);
+    }
+
+    @Override
+    public String[] getPeerSupportedSignatureAlgorithms() {
+        return EmptyArrays.EMPTY_STRINGS;
     }
 
     @Override
@@ -77,7 +111,7 @@ abstract class ExtendedOpenSslSession extends ExtendedSSLSession implements Open
     }
 
     @Override
-    public final SSLSessionContext getSessionContext() {
+    public final OpenSslSessionContext getSessionContext() {
         return wrapped.getSessionContext();
     }
 
@@ -92,6 +126,11 @@ abstract class ExtendedOpenSslSession extends ExtendedSSLSession implements Open
     }
 
     @Override
+    public void setLastAccessedTime(long time) {
+        wrapped.setLastAccessedTime(time);
+    }
+
+    @Override
     public final void invalidate() {
         wrapped.invalidate();
     }
@@ -102,13 +141,22 @@ abstract class ExtendedOpenSslSession extends ExtendedSSLSession implements Open
     }
 
     @Override
-    public final void putValue(String s, Object o) {
-        wrapped.putValue(s, o);
+    public final void putValue(String name, Object value) {
+        if (value instanceof SSLSessionBindingListener) {
+            // Decorate the value if needed so we submit the correct SSLSession instance
+            value = new SSLSessionBindingListenerDecorator((SSLSessionBindingListener) value);
+        }
+        wrapped.putValue(name, value);
     }
 
     @Override
     public final Object getValue(String s) {
-        return wrapped.getValue(s);
+        Object value =  wrapped.getValue(s);
+        if (value instanceof SSLSessionBindingListenerDecorator) {
+            // Unwrap as needed so we return the original value
+            return ((SSLSessionBindingListenerDecorator) value).delegate;
+        }
+        return value;
     }
 
     @Override
@@ -124,6 +172,11 @@ abstract class ExtendedOpenSslSession extends ExtendedSSLSession implements Open
     @Override
     public final Certificate[] getPeerCertificates() throws SSLPeerUnverifiedException {
         return wrapped.getPeerCertificates();
+    }
+
+    @Override
+    public boolean hasPeerCertificates() {
+        return wrapped.hasPeerCertificates();
     }
 
     @Override
@@ -174,5 +227,47 @@ abstract class ExtendedOpenSslSession extends ExtendedSSLSession implements Open
     @Override
     public final int getApplicationBufferSize() {
         return wrapped.getApplicationBufferSize();
+    }
+
+    private final class SSLSessionBindingListenerDecorator implements SSLSessionBindingListener {
+
+        final SSLSessionBindingListener delegate;
+
+        SSLSessionBindingListenerDecorator(SSLSessionBindingListener delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public void valueBound(SSLSessionBindingEvent event) {
+            delegate.valueBound(new SSLSessionBindingEvent(ExtendedOpenSslSession.this, event.getName()));
+        }
+
+        @Override
+        public void valueUnbound(SSLSessionBindingEvent event) {
+            delegate.valueUnbound(new SSLSessionBindingEvent(ExtendedOpenSslSession.this, event.getName()));
+        }
+    }
+
+    @Override
+    public void handshakeFinished(byte[] id, String cipher, String protocol, byte[] peerCertificate,
+                                  byte[][] peerCertificateChain, long creationTime, long timeout) throws SSLException {
+        wrapped.handshakeFinished(id, cipher, protocol, peerCertificate, peerCertificateChain, creationTime, timeout);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        return wrapped.equals(o);
+    }
+
+    @Override
+    public int hashCode() {
+        return wrapped.hashCode();
+    }
+
+    @Override
+    public String toString() {
+        return "ExtendedOpenSslSession{" +
+                "wrapped=" + wrapped +
+                '}';
     }
 }

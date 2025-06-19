@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -19,9 +19,10 @@ import static io.netty.resolver.dns.DnsAddressDecoder.decodeAddress;
 
 import java.net.InetAddress;
 import java.net.UnknownHostException;
-import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
+import io.netty.channel.Channel;
 import io.netty.channel.EventLoop;
 import io.netty.handler.codec.dns.DnsRecord;
 import io.netty.handler.codec.dns.DnsRecordType;
@@ -31,22 +32,29 @@ final class DnsAddressResolveContext extends DnsResolveContext<InetAddress> {
 
     private final DnsCache resolveCache;
     private final AuthoritativeDnsServerCache authoritativeDnsServerCache;
+    private final boolean completeEarlyIfPossible;
 
-    DnsAddressResolveContext(DnsNameResolver parent, String hostname, DnsRecord[] additionals,
-                             DnsServerAddressStream nameServerAddrs, DnsCache resolveCache,
-                             AuthoritativeDnsServerCache authoritativeDnsServerCache) {
-        super(parent, hostname, DnsRecord.CLASS_IN, parent.resolveRecordTypes(), additionals, nameServerAddrs);
+    DnsAddressResolveContext(DnsNameResolver parent, Channel channel,
+                             Promise<?> originalPromise, String hostname, DnsRecord[] additionals,
+                             DnsServerAddressStream nameServerAddrs, int allowedQueries, DnsCache resolveCache,
+                             AuthoritativeDnsServerCache authoritativeDnsServerCache,
+                             boolean completeEarlyIfPossible) {
+        super(parent, channel, originalPromise, hostname, DnsRecord.CLASS_IN,
+              parent.resolveRecordTypes(), additionals, nameServerAddrs, allowedQueries);
         this.resolveCache = resolveCache;
         this.authoritativeDnsServerCache = authoritativeDnsServerCache;
+        this.completeEarlyIfPossible = completeEarlyIfPossible;
     }
 
     @Override
-    DnsResolveContext<InetAddress> newResolverContext(DnsNameResolver parent, String hostname,
+    DnsResolveContext<InetAddress> newResolverContext(DnsNameResolver parent, Channel channel,
+                                                      Promise<?> originalPromise,
+                                                      String hostname,
                                                       int dnsClass, DnsRecordType[] expectedTypes,
                                                       DnsRecord[] additionals,
-                                                      DnsServerAddressStream nameServerAddrs) {
-        return new DnsAddressResolveContext(parent, hostname, additionals, nameServerAddrs, resolveCache,
-                authoritativeDnsServerCache);
+                                                      DnsServerAddressStream nameServerAddrs, int allowedQueries) {
+        return new DnsAddressResolveContext(parent, channel, originalPromise, hostname, additionals,
+                nameServerAddrs, allowedQueries, resolveCache, authoritativeDnsServerCache, completeEarlyIfPossible);
     }
 
     @Override
@@ -56,45 +64,38 @@ final class DnsAddressResolveContext extends DnsResolveContext<InetAddress> {
 
     @Override
     List<InetAddress> filterResults(List<InetAddress> unfiltered) {
-        final Class<? extends InetAddress> inetAddressType = parent.preferredAddressType().addressType();
-        final int size = unfiltered.size();
-        int numExpected = 0;
-        for (int i = 0; i < size; i++) {
-            InetAddress address = unfiltered.get(i);
-            if (inetAddressType.isInstance(address)) {
-                numExpected++;
-            }
-        }
-        if (numExpected == size || numExpected == 0) {
-            // If all the results are the preferred type, or none of them are, then we don't need to do any filtering.
-            return unfiltered;
-        }
-        List<InetAddress> filtered = new ArrayList<InetAddress>(numExpected);
-        for (int i = 0; i < size; i++) {
-            InetAddress address = unfiltered.get(i);
-            if (inetAddressType.isInstance(address)) {
-                filtered.add(address);
-            }
-        }
-        return filtered;
+        Collections.sort(unfiltered, PreferredAddressTypeComparator.comparator(parent.preferredAddressType()));
+        return unfiltered;
+    }
+
+    @Override
+    boolean isCompleteEarly(InetAddress resolved) {
+        return completeEarlyIfPossible && parent.preferredAddressType().addressType() == resolved.getClass();
+    }
+
+    @Override
+    boolean isDuplicateAllowed() {
+        // We don't want include duplicates to mimic JDK behaviour.
+        return false;
     }
 
     @Override
     void cache(String hostname, DnsRecord[] additionals,
                DnsRecord result, InetAddress convertedResult) {
-        resolveCache.cache(hostname, additionals, convertedResult, result.timeToLive(), parent.ch.eventLoop());
+        resolveCache.cache(hostname, additionals, convertedResult, result.timeToLive(),
+                channel().eventLoop());
     }
 
     @Override
     void cache(String hostname, DnsRecord[] additionals, UnknownHostException cause) {
-        resolveCache.cache(hostname, additionals, cause, parent.ch.eventLoop());
+        resolveCache.cache(hostname, additionals, cause, channel().eventLoop());
     }
 
     @Override
     void doSearchDomainQuery(String hostname, Promise<List<InetAddress>> nextPromise) {
         // Query the cache for the hostname first and only do a query if we could not find it in the cache.
-        if (!DnsNameResolver.doResolveAllCached(
-                hostname, additionals, nextPromise, resolveCache, parent.resolvedInternetProtocolFamiliesUnsafe())) {
+        if (!DnsNameResolver.doResolveAllCached(hostname, additionals, nextPromise, resolveCache,
+                parent.searchDomains(), parent.ndots(), parent.resolvedInternetProtocolFamiliesUnsafe())) {
             super.doSearchDomainQuery(hostname, nextPromise);
         }
     }

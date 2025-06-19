@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -14,6 +14,8 @@
  * under the License.
  */
 package io.netty.handler.ssl;
+
+import io.netty.util.internal.EmptyArrays;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -46,8 +48,8 @@ public final class IdentityCipherSuiteFilter implements CipherSuiteFilter {
             Set<String> supportedCiphers) {
         if (ciphers == null) {
             return defaultToDefaultCiphers ?
-                    defaultCiphers.toArray(new String[0]) :
-                    supportedCiphers.toArray(new String[0]);
+                    defaultCiphers.toArray(EmptyArrays.EMPTY_STRINGS) :
+                    supportedCiphers.toArray(EmptyArrays.EMPTY_STRINGS);
         } else {
             List<String> newCiphers = new ArrayList<String>(supportedCiphers.size());
             for (String c : ciphers) {
@@ -56,7 +58,7 @@ public final class IdentityCipherSuiteFilter implements CipherSuiteFilter {
                 }
                 newCiphers.add(c);
             }
-            return newCiphers.toArray(new String[0]);
+            return newCiphers.toArray(EmptyArrays.EMPTY_STRINGS);
         }
     }
 }

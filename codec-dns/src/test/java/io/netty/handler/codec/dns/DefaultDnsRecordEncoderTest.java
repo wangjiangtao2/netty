@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -21,13 +21,49 @@ import io.netty.channel.socket.InternetProtocolFamily;
 import io.netty.util.internal.PlatformDependent;
 import io.netty.util.internal.SocketUtils;
 import io.netty.util.internal.StringUtil;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import java.net.InetAddress;
 
-import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class DefaultDnsRecordEncoderTest {
+
+    @Test
+    public void testEncodePtr() throws Exception {
+        DefaultDnsRecordEncoder encoder = new DefaultDnsRecordEncoder();
+        DnsPtrRecord ptrRecord = new DefaultDnsPtrRecord("131.186.250.142.in-addr.arpa.",
+                DnsRecord.CLASS_IN, 80, "fra24s07-in-f3.1e100.net.");
+        ByteBuf out = Unpooled.buffer();
+        ByteBuf expectedBuf = Unpooled.buffer();
+        expectedBuf.writeBytes(
+                new byte[] {
+                        3, '1', '3', '1',
+                        3, '1', '8', '6',
+                        3, '2', '5', '0',
+                        3, '1', '4', '2',
+                        7, 'i', 'n', '-', 'a', 'd', 'd', 'r',
+                        4, 'a', 'r', 'p', 'a',
+                        0
+        });
+        expectedBuf.writeShort(DnsRecordType.PTR.intValue());
+        expectedBuf.writeShort(DnsRecord.CLASS_IN);
+        expectedBuf.writeInt(80);
+        byte[] hostname = new byte[] {
+                14, 'f', 'r', 'a', '2', '4', 's', '0', '7', '-', 'i', 'n', '-', 'f', '3',
+                5, '1', 'e', '1', '0', '0', 3, 'n', 'e', 't',
+                0
+        };
+        expectedBuf.writeShort(hostname.length);
+        expectedBuf.writeBytes(hostname);
+        try {
+            encoder.encodeRecord(ptrRecord, out);
+            assertEquals(expectedBuf, out);
+        } finally {
+            out.release();
+            expectedBuf.release();
+        }
+    }
 
     @Test
     public void testEncodeName() throws Exception {
@@ -97,7 +133,7 @@ public class DefaultDnsRecordEncoderTest {
             // Pad the leftover of the last byte with zeros.
             int idx = addressPart.writerIndex() - 1;
             byte lastByte = addressPart.getByte(idx);
-            int paddingMask = ~((1 << (8 - lowOrderBitsToPreserve)) - 1);
+            int paddingMask = -1 << 8 - lowOrderBitsToPreserve;
             addressPart.setByte(idx, lastByte & paddingMask);
         }
 

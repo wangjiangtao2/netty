@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -27,7 +27,6 @@ import io.netty.channel.oio.OioByteStreamChannel;
 import io.netty.channel.socket.ServerSocketChannel;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.util.internal.SocketUtils;
-import io.netty.util.internal.UnstableApi;
 import io.netty.util.internal.logging.InternalLogger;
 import io.netty.util.internal.logging.InternalLoggerFactory;
 
@@ -133,7 +132,6 @@ public class OioSocketChannel extends OioByteStreamChannel implements SocketChan
         return socket.isInputShutdown() && socket.isOutputShutdown() || !isActive();
     }
 
-    @UnstableApi
     @Override
     protected final void doShutdownOutput() throws Exception {
         shutdownOutput0();
@@ -300,13 +298,15 @@ public class OioSocketChannel extends OioByteStreamChannel implements SocketChan
             SocketUtils.bind(socket, localAddress);
         }
 
+        final int connectTimeoutMillis = config().getConnectTimeoutMillis();
         boolean success = false;
         try {
-            SocketUtils.connect(socket, remoteAddress, config().getConnectTimeoutMillis());
+            SocketUtils.connect(socket, remoteAddress, connectTimeoutMillis);
             activate(socket.getInputStream(), socket.getOutputStream());
             success = true;
         } catch (SocketTimeoutException e) {
-            ConnectTimeoutException cause = new ConnectTimeoutException("connection timed out: " + remoteAddress);
+            ConnectTimeoutException cause = new ConnectTimeoutException("connection timed out after " +
+                    connectTimeoutMillis + " ms: " + remoteAddress);
             cause.setStackTrace(e.getStackTrace());
             throw cause;
         } finally {

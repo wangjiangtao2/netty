@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -32,21 +32,50 @@ public class ByteBufCopyBenchmark extends AbstractMicrobenchmark {
         System.setProperty("io.netty.buffer.bytebuf.checkAccessible", "false");
     }
 
-    @Param({"7", "36", "128", "512" })
+    @Param({
+            "7",
+            "36",
+            "128",
+            "512",
+    })
     private int size;
-    @Param({"true", "false" })
+
+    @Param({
+            "true",
+            "false",
+    })
     private boolean directByteBuff;
-    @Param({"true", "false" })
+
+    @Param({
+            "true",
+            "false",
+    })
     private boolean directByteBuffer;
     @Param({"false", "true" })
     private boolean readonlyByteBuffer;
-    @Param({"true", "false" })
+
+    @Param({
+            "true",
+            "false",
+    })
     private boolean pooledByteBuf;
-    @Param({"true", "false" })
+
+    @Param({
+            "true",
+            "false",
+    })
     private boolean alignedCopyByteBuffer;
-    @Param({"true", "false" })
+
+    @Param({
+            "true",
+            "false",
+    })
     private boolean alignedCopyByteBuf;
-    @Param({"true", "false" })
+
+    @Param({
+            "true",
+            "false",
+    })
     private boolean nativeOrderByteBuffer;
 
     private ByteBuffer byteBuffer;

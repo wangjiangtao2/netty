@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -16,7 +16,6 @@
 package io.netty.handler.codec.dns;
 
 import io.netty.util.internal.StringUtil;
-import io.netty.util.internal.UnstableApi;
 
 /**
  * An <a href="https://tools.ietf.org/html/rfc6891#section-6.1">OPT RR</a> record.
@@ -24,7 +23,6 @@ import io.netty.util.internal.UnstableApi;
  * This is used for <a href="https://tools.ietf.org/html/rfc6891#section-6.1.3">
  *     Extension Mechanisms for DNS (EDNS(0))</a>.
  */
-@UnstableApi
 public abstract class AbstractDnsOptPseudoRrRecord extends AbstractDnsRecord implements DnsOptPseudoRecord {
 
     protected AbstractDnsOptPseudoRrRecord(int maxPayloadSize, int extendedRcode, int version) {
@@ -38,7 +36,7 @@ public abstract class AbstractDnsOptPseudoRrRecord extends AbstractDnsRecord imp
     // See https://tools.ietf.org/html/rfc6891#section-6.1.3
     private static long packIntoLong(int val, int val2) {
         // We are currently not support DO and Z fields, just use 0.
-        return ((val & 0xff) << 24 | (val2 & 0xff) << 16 | (0 & 0xff) <<  8 | 0 & 0xff) & 0xFFFFFFFFL;
+        return ((val & 0xffL) << 24 | (val2 & 0xff) << 16) & 0xFFFFFFFFL;
     }
 
     @Override

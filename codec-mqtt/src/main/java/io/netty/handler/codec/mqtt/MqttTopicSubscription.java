@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -24,29 +24,60 @@ import io.netty.util.internal.StringUtil;
  */
 public final class MqttTopicSubscription {
 
-    private final String topicFilter;
-    private final MqttQoS qualityOfService;
+    private String topicFilter;
+    private final MqttSubscriptionOption option;
 
     public MqttTopicSubscription(String topicFilter, MqttQoS qualityOfService) {
         this.topicFilter = topicFilter;
-        this.qualityOfService = qualityOfService;
+        this.option = MqttSubscriptionOption.onlyFromQos(qualityOfService);
     }
 
+    public MqttTopicSubscription(String topicFilter, MqttSubscriptionOption option) {
+        this.topicFilter = topicFilter;
+        this.option = option;
+    }
+
+    /**
+     * @deprecated use topicFilter
+     */
+    @Deprecated
     public String topicName() {
         return topicFilter;
     }
 
+    public String topicFilter() {
+        return topicFilter;
+    }
+
+    /**
+     * Rewrite topic filter.
+     * <p>
+     *
+     * Many IoT devices do not support reconfiguration or upgrade, so it is hard to
+     * change their subscribed topics. To resolve this issue, MQTT server may offer
+     * topic rewrite capability.
+     *
+     * @param topicFilter Topic to rewrite to
+     */
+    public void setTopicFilter(String topicFilter) {
+        this.topicFilter = topicFilter;
+    }
+
     public MqttQoS qualityOfService() {
-        return qualityOfService;
+        return option.qos();
+    }
+
+    public MqttSubscriptionOption option() {
+        return option;
     }
 
     @Override
     public String toString() {
         return new StringBuilder(StringUtil.simpleClassName(this))
-            .append('[')
-            .append("topicFilter=").append(topicFilter)
-            .append(", qualityOfService=").append(qualityOfService)
-            .append(']')
-            .toString();
+                .append('[')
+                .append("topicFilter=").append(topicFilter)
+                .append(", option=").append(this.option)
+                .append(']')
+                .toString();
     }
 }

@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -22,13 +22,17 @@ import io.netty.handler.codec.compression.ZlibCodecFactory;
 import io.netty.handler.codec.compression.ZlibWrapper;
 import io.netty.handler.codec.http.websocketx.BinaryWebSocketFrame;
 import io.netty.handler.codec.http.websocketx.extensions.WebSocketExtension;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import java.util.Random;
 
 import static io.netty.handler.codec.http.websocketx.extensions.WebSocketExtension.*;
 import static io.netty.handler.codec.http.websocketx.extensions.WebSocketExtensionFilter.*;
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class PerFrameDeflateDecoderTest {
 
@@ -38,7 +42,7 @@ public class PerFrameDeflateDecoderTest {
     public void testCompressedFrame() {
         EmbeddedChannel encoderChannel = new EmbeddedChannel(
                 ZlibCodecFactory.newZlibEncoder(ZlibWrapper.NONE, 9, 15, 8));
-        EmbeddedChannel decoderChannel = new EmbeddedChannel(new PerFrameDeflateDecoder(false));
+        EmbeddedChannel decoderChannel = new EmbeddedChannel(new PerFrameDeflateDecoder(false, 0));
 
         // initialize
         byte[] payload = new byte[300];
@@ -69,7 +73,7 @@ public class PerFrameDeflateDecoderTest {
 
     @Test
     public void testNormalFrame() {
-        EmbeddedChannel decoderChannel = new EmbeddedChannel(new PerFrameDeflateDecoder(false));
+        EmbeddedChannel decoderChannel = new EmbeddedChannel(new PerFrameDeflateDecoder(false, 0));
 
         // initialize
         byte[] payload = new byte[300];
@@ -99,7 +103,7 @@ public class PerFrameDeflateDecoderTest {
     public void testCompressedEmptyFrame() {
         EmbeddedChannel encoderChannel = new EmbeddedChannel(
                 ZlibCodecFactory.newZlibEncoder(ZlibWrapper.NONE, 9, 15, 8));
-        EmbeddedChannel decoderChannel = new EmbeddedChannel(new PerFrameDeflateDecoder(false));
+        EmbeddedChannel decoderChannel = new EmbeddedChannel(new PerFrameDeflateDecoder(false, 0));
 
         assertTrue(encoderChannel.writeOutbound(Unpooled.EMPTY_BUFFER));
         ByteBuf compressedPayload = encoderChannel.readOutbound();
@@ -122,7 +126,7 @@ public class PerFrameDeflateDecoderTest {
     public void testDecompressionSkip() {
         EmbeddedChannel encoderChannel = new EmbeddedChannel(
                 ZlibCodecFactory.newZlibEncoder(ZlibWrapper.NONE, 9, 15, 8));
-        EmbeddedChannel decoderChannel = new EmbeddedChannel(new PerFrameDeflateDecoder(false, ALWAYS_SKIP));
+        EmbeddedChannel decoderChannel = new EmbeddedChannel(new PerFrameDeflateDecoder(false, ALWAYS_SKIP, 0));
 
         byte[] payload = new byte[300];
         random.nextBytes(payload);

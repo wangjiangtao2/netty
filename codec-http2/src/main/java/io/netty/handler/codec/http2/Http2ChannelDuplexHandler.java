@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -20,7 +20,6 @@ import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPipeline;
 import io.netty.util.internal.StringUtil;
-import io.netty.util.internal.UnstableApi;
 
 /**
  * A {@link ChannelDuplexHandler} providing additional functionality for HTTP/2. Specifically it allows to:
@@ -32,7 +31,6 @@ import io.netty.util.internal.UnstableApi;
  * <p>The {@link Http2FrameCodec} is required to be part of the {@link ChannelPipeline} before this handler is added,
  * or else an {@link IllegalStateException} will be thrown.
  */
-@UnstableApi
 public abstract class Http2ChannelDuplexHandler extends ChannelDuplexHandler {
 
     private volatile Http2FrameCodec frameCodec;

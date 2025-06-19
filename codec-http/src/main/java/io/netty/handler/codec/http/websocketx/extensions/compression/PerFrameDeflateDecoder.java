@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -31,9 +31,11 @@ class PerFrameDeflateDecoder extends DeflateDecoder {
      * Constructor
      *
      * @param noContext true to disable context takeover.
+     * @param maxAllocation
+     *          maximum size of the decompression buffer. Must be &gt;= 0. If zero, maximum size is not limited.
      */
-    PerFrameDeflateDecoder(boolean noContext) {
-        super(noContext, WebSocketExtensionFilter.NEVER_SKIP);
+    PerFrameDeflateDecoder(boolean noContext, int maxAllocation) {
+        super(noContext, WebSocketExtensionFilter.NEVER_SKIP, maxAllocation);
     }
 
     /**
@@ -41,9 +43,11 @@ class PerFrameDeflateDecoder extends DeflateDecoder {
      *
      * @param noContext true to disable context takeover.
      * @param extensionDecoderFilter extension decoder filter for per frame deflate decoder.
+     * @param maxAllocation
+     *            maximum size of the decompression buffer. Must be &gt;= 0. If zero, maximum size is not limited.
      */
-    PerFrameDeflateDecoder(boolean noContext, WebSocketExtensionFilter extensionDecoderFilter) {
-        super(noContext, extensionDecoderFilter);
+    PerFrameDeflateDecoder(boolean noContext, WebSocketExtensionFilter extensionDecoderFilter, int maxAllocation) {
+        super(noContext, extensionDecoderFilter, maxAllocation);
     }
 
     @Override

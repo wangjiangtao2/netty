@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -24,7 +24,6 @@ import io.netty.handler.codec.http.HttpObjectEncoder;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponse;
 import io.netty.util.CharsetUtil;
-import io.netty.util.internal.StringUtil;
 
 import static io.netty.handler.codec.http.HttpConstants.*;
 
@@ -61,8 +60,7 @@ public class RtspEncoder extends HttpObjectEncoder<HttpMessage> {
             buf.writeCharSequence(response.status().reasonPhrase(), CharsetUtil.US_ASCII);
             ByteBufUtil.writeShortBE(buf, CRLF_SHORT);
         } else {
-            throw new UnsupportedMessageTypeException("Unsupported type "
-                                + StringUtil.simpleClassName(message));
+            throw new UnsupportedMessageTypeException(message, HttpRequest.class, HttpResponse.class);
         }
     }
 }

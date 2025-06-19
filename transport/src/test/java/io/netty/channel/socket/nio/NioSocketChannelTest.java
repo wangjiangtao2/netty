@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -35,7 +35,8 @@ import io.netty.channel.socket.SocketChannel;
 import io.netty.util.CharsetUtil;
 import io.netty.util.NetUtil;
 import io.netty.util.internal.PlatformDependent;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 import java.io.DataInput;
 import java.io.DataInputStream;
@@ -52,9 +53,13 @@ import java.nio.channels.NetworkChannel;
 import java.util.Queue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 
-import static org.hamcrest.CoreMatchers.*;
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
 public class NioSocketChannelTest extends AbstractNioChannelTest<NioSocketChannel> {
@@ -100,17 +105,17 @@ public class NioSocketChannelTest extends AbstractNioChannelTest<NioSocketChanne
             }
             s.close();
 
-            assertThat(futures.size(), is(3));
+            assertEquals(3, futures.size());
             ChannelFuture f1 = futures.poll();
             ChannelFuture f2 = futures.poll();
             ChannelFuture f3 = futures.poll();
-            assertThat(f1.isSuccess(), is(true));
-            assertThat(f2.isDone(), is(true));
-            assertThat(f2.isSuccess(), is(false));
-            assertThat(f2.cause(), is(instanceOf(ClosedChannelException.class)));
-            assertThat(f3.isDone(), is(true));
-            assertThat(f3.isSuccess(), is(false));
-            assertThat(f3.cause(), is(instanceOf(ClosedChannelException.class)));
+            assertTrue(f1.isSuccess());
+            assertTrue(f2.isDone());
+            assertFalse(f2.isSuccess());
+            assertInstanceOf(ClosedChannelException.class, f2.cause());
+            assertTrue(f3.isDone());
+            assertFalse(f3.isSuccess());
+            assertInstanceOf(ClosedChannelException.class, f3.cause());
         } finally {
             group.shutdownGracefully().sync();
         }
@@ -150,7 +155,7 @@ public class NioSocketChannelTest extends AbstractNioChannelTest<NioSocketChanne
             byte[] buf = new byte[3];
             in.readFully(buf);
 
-            assertThat(new String(buf, CharsetUtil.US_ASCII), is("abc"));
+            assertEquals("abc", new String(buf, CharsetUtil.US_ASCII));
 
             s.close();
         } finally {
@@ -159,12 +164,14 @@ public class NioSocketChannelTest extends AbstractNioChannelTest<NioSocketChanne
     }
 
     // Test for https://github.com/netty/netty/issues/4805
-    @Test(timeout = 3000)
+    @Test
+    @Timeout(value = 3000, unit = TimeUnit.MILLISECONDS)
     public void testChannelReRegisterReadSameEventLoop() throws Exception {
         testChannelReRegisterRead(true);
     }
 
-    @Test(timeout = 3000)
+    @Test
+    @Timeout(value = 3000, unit = TimeUnit.MILLISECONDS)
     public void testChannelReRegisterReadDifferentEventLoop() throws Exception {
         testChannelReRegisterRead(false);
     }
@@ -246,7 +253,8 @@ public class NioSocketChannelTest extends AbstractNioChannelTest<NioSocketChanne
         }
     }
 
-    @Test(timeout = 3000)
+    @Test
+    @Timeout(value = 3000, unit = TimeUnit.MILLISECONDS)
     public void testShutdownOutputAndClose() throws IOException {
         NioEventLoopGroup group = new NioEventLoopGroup(1);
         ServerSocket socket = new ServerSocket();

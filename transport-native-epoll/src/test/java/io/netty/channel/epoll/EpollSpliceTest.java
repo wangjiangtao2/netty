@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -27,18 +27,20 @@ import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.channel.unix.FileDescriptor;
-import io.netty.testsuite.util.TestUtils;
 import io.netty.util.NetUtil;
-import org.junit.Assert;
-import org.junit.Test;
+import io.netty.util.internal.PlatformDependent;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.Random;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class EpollSpliceTest {
 
@@ -80,7 +82,7 @@ public class EpollSpliceTest {
                         // We are splicing two channels together, at this point we have a tcp proxy which handles all
                         // the data transfer only in kernel space!
 
-                        // Integer.MAX_VALUE will splice infinitly.
+                        // Integer.MAX_VALUE will splice infinitely.
                         ch.spliceTo(ch2, Integer.MAX_VALUE).addListener(new ChannelFutureListener() {
                             @Override
                             public void operationComplete(ChannelFuture future) throws Exception {
@@ -148,11 +150,7 @@ public class EpollSpliceTest {
                 break;
             }
 
-            try {
-                Thread.sleep(50);
-            } catch (InterruptedException e) {
-                // Ignore.
-            }
+            Thread.sleep(50);
         }
 
         while (sh.counter < data.length) {
@@ -163,11 +161,7 @@ public class EpollSpliceTest {
                 break;
             }
 
-            try {
-                Thread.sleep(50);
-            } catch (InterruptedException e) {
-                // Ignore.
-            }
+            Thread.sleep(50);
         }
 
         sh.channel.close().sync();
@@ -191,9 +185,10 @@ public class EpollSpliceTest {
     }
 
     @Test
+    @Timeout(value = 10000, unit = TimeUnit.MILLISECONDS)
     public void spliceToFile() throws Throwable {
         EventLoopGroup group = new EpollEventLoopGroup(1);
-        File file = File.createTempFile("netty-splice", null);
+        File file = PlatformDependent.createTempFile("netty-splice", null, null);
         file.deleteOnExit();
 
         SpliceHandler sh = new SpliceHandler(file);
@@ -216,15 +211,11 @@ public class EpollSpliceTest {
             i += length;
         }
 
-        while (sh.future == null || !sh.future.isDone()) {
+        while (sh.future2 == null || !sh.future2.isDone() || !sh.future.isDone()) {
             if (sh.exception.get() != null) {
                 break;
             }
-            try {
-                Thread.sleep(50);
-            } catch (InterruptedException e) {
-                // Ignore.
-            }
+            Thread.sleep(50);
         }
 
         sc.close().sync();
@@ -238,8 +229,8 @@ public class EpollSpliceTest {
         FileInputStream in = new FileInputStream(file);
 
         try {
-            Assert.assertEquals(written.length, in.read(written));
-            Assert.assertArrayEquals(data, written);
+            assertEquals(written.length, in.read(written));
+            assertArrayEquals(data, written);
         } finally {
             in.close();
             group.shutdownGracefully();
@@ -292,8 +283,8 @@ public class EpollSpliceTest {
     private static class SpliceHandler extends ChannelInboundHandlerAdapter {
         private final File file;
 
-        volatile Channel channel;
         volatile ChannelFuture future;
+        volatile ChannelFuture future2;
         final AtomicReference<Throwable> exception = new AtomicReference<Throwable>();
 
         SpliceHandler(File file) {
@@ -301,13 +292,13 @@ public class EpollSpliceTest {
         }
 
         @Override
-        public void channelActive(ChannelHandlerContext ctx)
-                throws Exception {
-            channel = ctx.channel();
+        public void channelActive(ChannelHandlerContext ctx) throws Exception {
             final EpollSocketChannel ch = (EpollSocketChannel) ctx.channel();
             final FileDescriptor fd = FileDescriptor.from(file);
 
-            future = ch.spliceTo(fd, 0, data.length);
+            // splice two halves separately to test starting offset
+            future = ch.spliceTo(fd, 0, data.length / 2);
+            future2 = ch.spliceTo(fd, data.length / 2, data.length / 2);
         }
 
         @Override

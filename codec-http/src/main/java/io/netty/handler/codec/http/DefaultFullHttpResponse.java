@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -16,9 +16,12 @@
 package io.netty.handler.codec.http;
 
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufUtil;
 import io.netty.buffer.Unpooled;
 import io.netty.util.IllegalReferenceCountException;
 
+import static io.netty.handler.codec.http.DefaultHttpHeadersFactory.headersFactory;
+import static io.netty.handler.codec.http.DefaultHttpHeadersFactory.trailersFactory;
 import static io.netty.util.internal.ObjectUtil.checkNotNull;
 
 /**
@@ -34,36 +37,92 @@ public class DefaultFullHttpResponse extends DefaultHttpResponse implements Full
      */
     private int hash;
 
+    /**
+     * Create an empty HTTP response with the given HTTP version and status.
+     */
     public DefaultFullHttpResponse(HttpVersion version, HttpResponseStatus status) {
-        this(version, status, Unpooled.buffer(0));
+        this(version, status, Unpooled.buffer(0), headersFactory(), trailersFactory());
     }
 
+    /**
+     * Create an HTTP response with the given HTTP version, status, and contents.
+     */
     public DefaultFullHttpResponse(HttpVersion version, HttpResponseStatus status, ByteBuf content) {
-        this(version, status, content, true);
+        this(version, status, content, headersFactory(), trailersFactory());
     }
 
+    /**
+     * Create an empty HTTP response with the given HTTP version, status, and optional header validation.
+     *
+     * @deprecated Prefer the {@link #DefaultFullHttpResponse(HttpVersion, HttpResponseStatus, ByteBuf,
+     * HttpHeadersFactory, HttpHeadersFactory)} constructor instead.
+     */
+    @Deprecated
     public DefaultFullHttpResponse(HttpVersion version, HttpResponseStatus status, boolean validateHeaders) {
-        this(version, status, Unpooled.buffer(0), validateHeaders, false);
+        this(version, status, Unpooled.buffer(0),
+                headersFactory().withValidation(validateHeaders),
+                trailersFactory().withValidation(validateHeaders));
     }
 
+    /**
+     * Create an empty HTTP response with the given HTTP version, status, optional header validation,
+     * and optional header combining.
+     *
+     * @deprecated Prefer the {@link #DefaultFullHttpResponse(HttpVersion, HttpResponseStatus, ByteBuf,
+     * HttpHeadersFactory, HttpHeadersFactory)} constructor instead.
+     */
+    @Deprecated
     public DefaultFullHttpResponse(HttpVersion version, HttpResponseStatus status, boolean validateHeaders,
                                    boolean singleFieldHeaders) {
-        this(version, status, Unpooled.buffer(0), validateHeaders, singleFieldHeaders);
+        this(version, status, Unpooled.buffer(0),
+                headersFactory().withValidation(validateHeaders).withCombiningHeaders(singleFieldHeaders),
+                trailersFactory().withValidation(validateHeaders).withCombiningHeaders(singleFieldHeaders));
     }
 
+    /**
+     * Create an HTTP response with the given HTTP version, status, contents, and optional header validation.
+     *
+     * @deprecated Prefer the {@link #DefaultFullHttpResponse(HttpVersion, HttpResponseStatus, ByteBuf,
+     * HttpHeadersFactory, HttpHeadersFactory)} constructor instead.
+     */
+    @Deprecated
     public DefaultFullHttpResponse(HttpVersion version, HttpResponseStatus status,
                                    ByteBuf content, boolean validateHeaders) {
-        this(version, status, content, validateHeaders, false);
+        this(version, status, content,
+                headersFactory().withValidation(validateHeaders),
+                trailersFactory().withValidation(validateHeaders));
     }
 
+    /**
+     * Create an HTTP response with the given HTTP version, status, contents, optional header validation,
+     * and optional header combining.
+     *
+     * @deprecated Prefer the {@link #DefaultFullHttpResponse(HttpVersion, HttpResponseStatus, ByteBuf,
+     * HttpHeadersFactory, HttpHeadersFactory)} constructor instead.
+     */
+    @Deprecated
     public DefaultFullHttpResponse(HttpVersion version, HttpResponseStatus status,
                                    ByteBuf content, boolean validateHeaders, boolean singleFieldHeaders) {
-        super(version, status, validateHeaders, singleFieldHeaders);
-        this.content = checkNotNull(content, "content");
-        this.trailingHeaders = singleFieldHeaders ? new CombinedHttpHeaders(validateHeaders)
-                                                  : new DefaultHttpHeaders(validateHeaders);
+        this(version, status, content,
+                headersFactory().withValidation(validateHeaders).withCombiningHeaders(singleFieldHeaders),
+                trailersFactory().withValidation(validateHeaders).withCombiningHeaders(singleFieldHeaders));
     }
 
+    /**
+     * Create an HTTP response with the given HTTP version, status, contents,
+     * and with headers and trailers created by the given header factories.
+     * <p>
+     * The recommended header factory is {@link DefaultHttpHeadersFactory#headersFactory()},
+     * and the recommended trailer factory is {@link DefaultHttpHeadersFactory#trailersFactory()}.
+     */
+    public DefaultFullHttpResponse(HttpVersion version, HttpResponseStatus status, ByteBuf content,
+                                   HttpHeadersFactory headersFactory, HttpHeadersFactory trailersFactory) {
+        this(version, status, content, headersFactory.newHeaders(), trailersFactory.newHeaders());
+    }
+
+    /**
+     * Create an HTTP response with the given HTTP version, status, contents, headers and trailers.
+     */
     public DefaultFullHttpResponse(HttpVersion version, HttpResponseStatus status,
             ByteBuf content, HttpHeaders headers, HttpHeaders trailingHeaders) {
         super(version, status, headers);
@@ -159,7 +218,7 @@ public class DefaultFullHttpResponse extends DefaultHttpResponse implements Full
     public int hashCode() {
         int hash = this.hash;
         if (hash == 0) {
-            if (content().refCnt() != 0) {
+            if (ByteBufUtil.isAccessible(content())) {
                 try {
                     hash = 31 + content().hashCode();
                 } catch (IllegalReferenceCountException ignored) {

@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -22,7 +22,6 @@ import io.netty.util.ResourceLeakDetector;
 import io.netty.util.ResourceLeakDetectorFactory;
 import io.netty.util.ResourceLeakTracker;
 import io.netty.util.internal.StringUtil;
-import io.netty.util.internal.UnstableApi;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -32,7 +31,6 @@ import static io.netty.util.internal.ObjectUtil.checkNotNull;
 /**
  * A skeletal implementation of {@link DnsMessage}.
  */
-@UnstableApi
 public abstract class AbstractDnsMessage extends AbstractReferenceCounted implements DnsMessage {
 
     private static final ResourceLeakDetector<DnsMessage> leakDetector =
@@ -427,6 +425,8 @@ public abstract class AbstractDnsMessage extends AbstractReferenceCounted implem
             return authorities;
         case 3:
             return additionals;
+        default:
+            break;
         }
 
         throw new Error(); // Should never reach here.
@@ -446,6 +446,8 @@ public abstract class AbstractDnsMessage extends AbstractReferenceCounted implem
         case 3:
             additionals = value;
             return;
+        default:
+            break;
         }
 
         throw new Error(); // Should never reach here.

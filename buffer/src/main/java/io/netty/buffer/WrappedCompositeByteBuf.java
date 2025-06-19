@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -96,6 +96,11 @@ class WrappedCompositeByteBuf extends CompositeByteBuf {
     @Override
     public final int maxWritableBytes() {
         return wrapped.maxWritableBytes();
+    }
+
+    @Override
+    public int maxFastWritableBytes() {
+        return wrapped.maxFastWritableBytes();
     }
 
     @Override
@@ -404,6 +409,16 @@ class WrappedCompositeByteBuf extends CompositeByteBuf {
     }
 
     @Override
+    protected int forEachByteAsc0(int start, int end, ByteProcessor processor) throws Exception {
+        return wrapped.forEachByteAsc0(start, end, processor);
+    }
+
+    @Override
+    protected int forEachByteDesc0(int rStart, int rEnd, ByteProcessor processor) throws Exception {
+        return wrapped.forEachByteDesc0(rStart, rEnd, processor);
+    }
+
+    @Override
     public final int hashCode() {
         return wrapped.hashCode();
     }
@@ -545,6 +560,12 @@ class WrappedCompositeByteBuf extends CompositeByteBuf {
     @Override
     public CompositeByteBuf addComponent(boolean increaseWriterIndex, int cIndex, ByteBuf buffer) {
         wrapped.addComponent(increaseWriterIndex, cIndex, buffer);
+        return this;
+    }
+
+    @Override
+    public CompositeByteBuf addFlattenedComponents(boolean increaseWriterIndex, ByteBuf buffer) {
+        wrapped.addFlattenedComponents(increaseWriterIndex, buffer);
         return this;
     }
 

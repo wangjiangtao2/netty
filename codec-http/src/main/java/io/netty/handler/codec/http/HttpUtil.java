@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -18,6 +18,7 @@ package io.netty.handler.codec.http;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.Charset;
+import java.nio.charset.IllegalCharsetNameException;
 import java.nio.charset.UnsupportedCharsetException;
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -26,6 +27,10 @@ import java.util.List;
 import io.netty.util.AsciiString;
 import io.netty.util.CharsetUtil;
 import io.netty.util.NetUtil;
+import io.netty.util.internal.ObjectUtil;
+
+import static io.netty.util.internal.StringUtil.COMMA;
+import static io.netty.util.internal.ObjectUtil.checkPositiveOrZero;
 
 /**
  * Utility methods useful in the HTTP context.
@@ -34,6 +39,7 @@ public final class HttpUtil {
 
     private static final AsciiString CHARSET_EQUALS = AsciiString.of(HttpHeaderValues.CHARSET + "=");
     private static final AsciiString SEMICOLON = AsciiString.cached(";");
+    private static final String COMMA_STRING = String.valueOf(COMMA);
 
     private HttpUtil() { }
 
@@ -42,8 +48,15 @@ public final class HttpUtil {
      * <a href="https://tools.ietf.org/html/rfc7230#section-5.3">rfc7230, 5.3</a>.
      */
     public static boolean isOriginForm(URI uri) {
-        return uri.getScheme() == null && uri.getSchemeSpecificPart() == null &&
-               uri.getHost() == null && uri.getAuthority() == null;
+        return isOriginForm(uri.toString());
+    }
+
+    /**
+     * Determine if a string uri is in origin-form according to
+     * <a href="https://tools.ietf.org/html/rfc7230#section-5.3">rfc7230, 5.3</a>.
+     */
+    public static boolean isOriginForm(String uri) {
+        return uri.startsWith("/");
     }
 
     /**
@@ -51,10 +64,15 @@ public final class HttpUtil {
      * <a href="https://tools.ietf.org/html/rfc7230#section-5.3">rfc7230, 5.3</a>.
      */
     public static boolean isAsteriskForm(URI uri) {
-        return "*".equals(uri.getPath()) &&
-                uri.getScheme() == null && uri.getSchemeSpecificPart() == null &&
-                uri.getHost() == null && uri.getAuthority() == null && uri.getQuery() == null &&
-                uri.getFragment() == null;
+        return isAsteriskForm(uri.toString());
+    }
+
+    /**
+     * Determine if a string uri is in asterisk-form according to
+     * <a href="https://tools.ietf.org/html/rfc7230#section-5.3">rfc7230, 5.3</a>.
+     */
+    public static boolean isAsteriskForm(String uri) {
+        return "*".equals(uri);
     }
 
     /**
@@ -189,8 +207,9 @@ public final class HttpUtil {
      * Get an {@code int} representation of {@link #getContentLength(HttpMessage, long)}.
      *
      * @return the content length or {@code defaultValue} if this message does
-     *         not have the {@code "Content-Length"} header or its value is not
-     *         a number. Not to exceed the boundaries of integer.
+     *         not have the {@code "Content-Length"} header.
+     *
+     * @throws NumberFormatException if the {@code "Content-Length"} header does not parse as an int
      */
     public static int getContentLength(HttpMessage message, int defaultValue) {
         return (int) Math.min(Integer.MAX_VALUE, getContentLength(message, (long) defaultValue));
@@ -200,7 +219,7 @@ public final class HttpUtil {
      * Returns the content length of the specified web socket message. If the
      * specified message is not a web socket message, {@code -1} is returned.
      */
-    private static int getWebSocketContentLength(HttpMessage message) {
+    static int getWebSocketContentLength(HttpMessage message) {
         // WebSocket messages have constant content-lengths.
         HttpHeaders h = message.headers();
         if (message instanceof HttpRequest) {
@@ -298,7 +317,7 @@ public final class HttpUtil {
      * @return True if transfer encoding is chunked, otherwise false
      */
     public static boolean isTransferEncodingChunked(HttpMessage message) {
-        return message.headers().contains(HttpHeaderNames.TRANSFER_ENCODING, HttpHeaderValues.CHUNKED, true);
+        return message.headers().containsValue(HttpHeaderNames.TRANSFER_ENCODING, HttpHeaderValues.CHUNKED, true);
     }
 
     /**
@@ -387,19 +406,23 @@ public final class HttpUtil {
      */
     public static Charset getCharset(CharSequence contentTypeValue, Charset defaultCharset) {
         if (contentTypeValue != null) {
-            CharSequence charsetCharSequence = getCharsetAsSequence(contentTypeValue);
-            if (charsetCharSequence != null) {
-                try {
-                    return Charset.forName(charsetCharSequence.toString());
-                } catch (UnsupportedCharsetException ignored) {
-                    return defaultCharset;
+            CharSequence charsetRaw = getCharsetAsSequence(contentTypeValue);
+            if (charsetRaw != null) {
+                if (charsetRaw.length() > 2) { // at least contains 2 quotes(")
+                    if (charsetRaw.charAt(0) == '"' && charsetRaw.charAt(charsetRaw.length() - 1) == '"') {
+                        charsetRaw = charsetRaw.subSequence(1, charsetRaw.length() - 1);
+                    }
                 }
-            } else {
-                return defaultCharset;
+                try {
+                    return Charset.forName(charsetRaw.toString());
+                } catch (IllegalCharsetNameException ignored) {
+                    // just return the default charset
+                } catch (UnsupportedCharsetException ignored) {
+                    // just return the default charset
+                }
             }
-        } else {
-            return defaultCharset;
         }
+        return defaultCharset;
     }
 
     /**
@@ -448,9 +471,7 @@ public final class HttpUtil {
      * @throws NullPointerException in case if {@code contentTypeValue == null}
      */
     public static CharSequence getCharsetAsSequence(CharSequence contentTypeValue) {
-        if (contentTypeValue == null) {
-            throw new NullPointerException("contentTypeValue");
-        }
+        ObjectUtil.checkNotNull(contentTypeValue, "contentTypeValue");
 
         int indexOfCharset = AsciiString.indexOfIgnoreCaseAscii(contentTypeValue, CHARSET_EQUALS, 0);
         if (indexOfCharset == AsciiString.INDEX_NOT_FOUND) {
@@ -504,9 +525,7 @@ public final class HttpUtil {
      * @throws NullPointerException in case if {@code contentTypeValue == null}
      */
     public static CharSequence getMimeType(CharSequence contentTypeValue) {
-        if (contentTypeValue == null) {
-            throw new NullPointerException("contentTypeValue");
-        }
+        ObjectUtil.checkNotNull(contentTypeValue, "contentTypeValue");
 
         int indexOfSemicolon = AsciiString.indexOfIgnoreCaseAscii(contentTypeValue, SEMICOLON, 0);
         if (indexOfSemicolon != AsciiString.INDEX_NOT_FOUND) {
@@ -518,7 +537,7 @@ public final class HttpUtil {
 
     /**
      * Formats the host string of an address so it can be used for computing an HTTP component
-     * such as an URL or a Host header
+     * such as a URL or a Host header
      *
      * @param addr the address
      * @return the formatted String
@@ -528,9 +547,232 @@ public final class HttpUtil {
         if (NetUtil.isValidIpV6Address(hostString)) {
             if (!addr.isUnresolved()) {
                 hostString = NetUtil.toAddressString(addr.getAddress());
+            } else if (hostString.charAt(0) == '[' && hostString.charAt(hostString.length() - 1) == ']') {
+                // If IPv6 address already contains brackets, let's return as is.
+                return hostString;
             }
+
             return '[' + hostString + ']';
         }
         return hostString;
     }
+
+    /**
+     * Validates, and optionally extracts the content length from headers. This method is not intended for
+     * general use, but is here to be shared between HTTP/1 and HTTP/2 parsing.
+     *
+     * @param contentLengthFields the content-length header fields.
+     * @param isHttp10OrEarlier {@code true} if we are handling HTTP/1.0 or earlier
+     * @param allowDuplicateContentLengths {@code true}  if multiple, identical-value content lengths should be allowed.
+     * @return the normalized content length from the headers or {@code -1} if the fields were empty.
+     * @throws IllegalArgumentException if the content-length fields are not valid
+     */
+    public static long normalizeAndGetContentLength(
+            List<? extends CharSequence> contentLengthFields, boolean isHttp10OrEarlier,
+            boolean allowDuplicateContentLengths) {
+        if (contentLengthFields.isEmpty()) {
+            return -1;
+        }
+
+        // Guard against multiple Content-Length headers as stated in
+        // https://tools.ietf.org/html/rfc7230#section-3.3.2:
+        //
+        // If a message is received that has multiple Content-Length header
+        //   fields with field-values consisting of the same decimal value, or a
+        //   single Content-Length header field with a field value containing a
+        //   list of identical decimal values (e.g., "Content-Length: 42, 42"),
+        //   indicating that duplicate Content-Length header fields have been
+        //   generated or combined by an upstream message processor, then the
+        //   recipient MUST either reject the message as invalid or replace the
+        //   duplicated field-values with a single valid Content-Length field
+        //   containing that decimal value prior to determining the message body
+        //   length or forwarding the message.
+        String firstField = contentLengthFields.get(0).toString();
+        boolean multipleContentLengths =
+                contentLengthFields.size() > 1 || firstField.indexOf(COMMA) >= 0;
+
+        if (multipleContentLengths && !isHttp10OrEarlier) {
+            if (allowDuplicateContentLengths) {
+                // Find and enforce that all Content-Length values are the same
+                String firstValue = null;
+                for (CharSequence field : contentLengthFields) {
+                    String[] tokens = field.toString().split(COMMA_STRING, -1);
+                    for (String token : tokens) {
+                        String trimmed = token.trim();
+                        if (firstValue == null) {
+                            firstValue = trimmed;
+                        } else if (!trimmed.equals(firstValue)) {
+                            throw new IllegalArgumentException(
+                                    "Multiple Content-Length values found: " + contentLengthFields);
+                        }
+                    }
+                }
+                // Replace the duplicated field-values with a single valid Content-Length field
+                firstField = firstValue;
+            } else {
+                // Reject the message as invalid
+                throw new IllegalArgumentException(
+                        "Multiple Content-Length values found: " + contentLengthFields);
+            }
+        }
+        // Ensure we not allow sign as part of the content-length:
+        // See https://github.com/squid-cache/squid/security/advisories/GHSA-qf3v-rc95-96j5
+        if (firstField.isEmpty() || !Character.isDigit(firstField.charAt(0))) {
+            // Reject the message as invalid
+            throw new IllegalArgumentException(
+                    "Content-Length value is not a number: " + firstField);
+        }
+        try {
+            final long value = Long.parseLong(firstField);
+            return checkPositiveOrZero(value, "Content-Length value");
+        } catch (NumberFormatException e) {
+            // Reject the message as invalid
+            throw new IllegalArgumentException(
+                    "Content-Length value is not a number: " + firstField, e);
+        }
+    }
+
+    /**
+     * Validate a <a href="https://tools.ietf.org/html/rfc7230#section-3.2.6">token</a> contains only allowed
+     * characters.
+     * <p>
+     * The <a href="https://tools.ietf.org/html/rfc2616#section-2.2">token</a> format is used for variety of HTTP
+     * components, like  <a href="https://tools.ietf.org/html/rfc6265#section-4.1.1">cookie-name</a>,
+     * <a href="https://tools.ietf.org/html/rfc7230#section-3.2.6">field-name</a> of a
+     * <a href="https://tools.ietf.org/html/rfc7230#section-3.2">header-field</a>, or
+     * <a href="https://tools.ietf.org/html/rfc7231#section-4">request method</a>.
+     *
+     * @param token the token to validate.
+     * @return the index of the first invalid token character found, or {@code -1} if there are none.
+     */
+    static int validateToken(CharSequence token) {
+        if (token instanceof AsciiString) {
+            return validateAsciiStringToken((AsciiString) token);
+        }
+        return validateCharSequenceToken(token);
+    }
+
+    /**
+     * Validate that an {@link AsciiString} contain onlu valid
+     * <a href="https://tools.ietf.org/html/rfc7230#section-3.2.6">token</a> characters.
+     *
+     * @param token the ascii string to validate.
+     */
+    private static int validateAsciiStringToken(AsciiString token) {
+        byte[] array = token.array();
+        for (int i = token.arrayOffset(), len = token.arrayOffset() + token.length(); i < len; i++) {
+            if (!isValidTokenChar(array[i])) {
+                return i - token.arrayOffset();
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * Validate that a {@link CharSequence} contain onlu valid
+     * <a href="https://tools.ietf.org/html/rfc7230#section-3.2.6">token</a> characters.
+     *
+     * @param token the character sequence to validate.
+     */
+    private static int validateCharSequenceToken(CharSequence token) {
+        for (int i = 0, len = token.length(); i < len; i++) {
+            byte value = (byte) token.charAt(i);
+            if (!isValidTokenChar(value)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    // HEADER
+    // header-field   = field-name ":" OWS field-value OWS
+    //
+    // field-name     = token
+    // token          = 1*tchar
+    //
+    // tchar          = "!" / "#" / "$" / "%" / "&" / "'" / "*"
+    //                    / "+" / "-" / "." / "^" / "_" / "`" / "|" / "~"
+    //                    / DIGIT / ALPHA
+    //                    ; any VCHAR, except delimiters.
+    //  Delimiters are chosen
+    //   from the set of US-ASCII visual characters not allowed in a token
+    //   (DQUOTE and "(),/:;<=>?@[\]{}")
+    //
+    // COOKIE
+    // cookie-pair       = cookie-name "=" cookie-value
+    // cookie-name       = token
+    // token          = 1*<any CHAR except CTLs or separators>
+    // CTL = <any US-ASCII control character
+    //       (octets 0 - 31) and DEL (127)>
+    // separators     = "(" | ")" | "<" | ">" | "@"
+    //                      | "," | ";" | ":" | "\" | <">
+    //                      | "/" | "[" | "]" | "?" | "="
+    //                      | "{" | "}" | SP | HT
+    //
+    // field-name's token is equivalent to cookie-name's token, we can reuse the tchar mask for both:
+
+    //    private static final class BitSet128 {
+    //        private long high;
+    //        private long low;
+    //
+    //        BitSet128 range(char fromInc, char toInc) {
+    //            for (int bit = fromInc; bit <= toInc; bit++) {
+    //                if (bit < 64) {
+    //                    low |= 1L << bit;
+    //                } else {
+    //                    high |= 1L << bit - 64;
+    //                }
+    //            }
+    //            return this;
+    //        }
+    //
+    //        BitSet128 bits(char... bits) {
+    //            for (char bit : bits) {
+    //                if (bit < 64) {
+    //                    low |= 1L << bit;
+    //                } else {
+    //                    high |= 1L << bit - 64;
+    //                }
+    //            }
+    //            return this;
+    //        }
+    //
+    //        long high() {
+    //            return high;
+    //        }
+    //
+    //        long low() {
+    //            return low;
+    //        }
+    //
+    //        static boolean contains(byte bit, long high, long low) {
+    //            if (bit < 0) {
+    //                return false;
+    //            }
+    //            if (bit < 64) {
+    //                return 0 != (low & 1L << bit);
+    //            }
+    //            return 0 != (high & 1L << bit - 64);
+    //        }
+    //    }
+
+    // BitSet128 tokenChars = new BitSet128()
+    //        .range('0', '9').range('a', 'z').range('A', 'Z') // Alphanumeric.
+    //        .bits('-', '.', '_', '~') // Unreserved characters.
+    //        .bits('!', '#', '$', '%', '&', '\'', '*', '+', '^', '`', '|'); // Token special characters.
+
+    //this constants calculated by the above code
+    private static final long TOKEN_CHARS_HIGH = 0x57ffffffc7fffffeL;
+    private static final long TOKEN_CHARS_LOW = 0x3ff6cfa00000000L;
+
+    private static boolean isValidTokenChar(byte bit) {
+        if (bit < 0) {
+            return false;
+        }
+        if (bit < 64) {
+            return 0 != (TOKEN_CHARS_LOW & 1L << bit);
+        }
+        return 0 != (TOKEN_CHARS_HIGH & 1L << bit - 64);
+    }
+
 }

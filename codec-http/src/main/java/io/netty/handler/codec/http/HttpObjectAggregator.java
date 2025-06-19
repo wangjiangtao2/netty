@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -24,7 +24,6 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPipeline;
 import io.netty.handler.codec.DecoderResult;
 import io.netty.handler.codec.MessageAggregator;
-import io.netty.handler.codec.TooLongFrameException;
 import io.netty.util.internal.logging.InternalLogger;
 import io.netty.util.internal.logging.InternalLoggerFactory;
 
@@ -271,16 +270,9 @@ public class HttpObjectAggregator
                     }
                 });
             }
-
-            // If an oversized request was handled properly and the connection is still alive
-            // (i.e. rejected 100-continue). the decoder should prepare to handle a new message.
-            HttpObjectDecoder decoder = ctx.pipeline().get(HttpObjectDecoder.class);
-            if (decoder != null) {
-                decoder.reset();
-            }
         } else if (oversized instanceof HttpResponse) {
             ctx.close();
-            throw new TooLongFrameException("Response entity too large: " + oversized);
+            throw new TooLongHttpContentException("Response entity too large: " + oversized);
         } else {
             throw new IllegalStateException();
         }

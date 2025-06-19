@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -19,10 +19,13 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.util.CharsetUtil;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-import static org.hamcrest.CoreMatchers.*;
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class HttpServerCodecTest {
 
@@ -76,28 +79,28 @@ public class HttpServerCodecTest {
                 "Content-Length: 1\r\n\r\n", CharsetUtil.UTF_8));
 
         // Ensure the aggregator generates nothing.
-        assertThat(ch.readInbound(), is(nullValue()));
+        assertNull(ch.readInbound());
 
         // Ensure the aggregator writes a 100 Continue response.
         ByteBuf continueResponse = ch.readOutbound();
-        assertThat(continueResponse.toString(CharsetUtil.UTF_8), is("HTTP/1.1 100 Continue\r\n\r\n"));
+        assertEquals("HTTP/1.1 100 Continue\r\n\r\n", continueResponse.toString(CharsetUtil.UTF_8));
         continueResponse.release();
 
         // But nothing more.
-        assertThat(ch.readOutbound(), is(nullValue()));
+        assertNull(ch.readOutbound());
 
         // Send the content of the request.
         ch.writeInbound(Unpooled.wrappedBuffer(new byte[] { 42 }));
 
         // Ensure the aggregator generates a full request.
         FullHttpRequest req = ch.readInbound();
-        assertThat(req.headers().get(HttpHeaderNames.CONTENT_LENGTH), is("1"));
-        assertThat(req.content().readableBytes(), is(1));
-        assertThat(req.content().readByte(), is((byte) 42));
+        assertEquals("1", req.headers().get(HttpHeaderNames.CONTENT_LENGTH));
+        assertEquals(1, req.content().readableBytes());
+        assertEquals((byte) 42, req.content().readByte());
         req.release();
 
         // But nothing more.
-        assertThat(ch.readInbound(), is(nullValue()));
+        assertNull(ch.readInbound());
 
         // Send the actual response.
         FullHttpResponse res = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.CREATED);
@@ -107,8 +110,8 @@ public class HttpServerCodecTest {
 
         // Ensure the encoder handles the response after handling 100 Continue.
         ByteBuf encodedRes = ch.readOutbound();
-        assertThat(encodedRes.toString(CharsetUtil.UTF_8),
-                   is("HTTP/1.1 201 Created\r\n" + HttpHeaderNames.CONTENT_LENGTH + ": 2\r\n\r\nOK"));
+        assertEquals("HTTP/1.1 201 Created\r\n" + HttpHeaderNames.CONTENT_LENGTH + ": 2\r\n\r\nOK",
+                encodedRes.toString(CharsetUtil.UTF_8));
         encodedRes.release();
 
         ch.finish();

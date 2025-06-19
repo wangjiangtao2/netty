@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -20,45 +20,64 @@ import io.netty.channel.EventLoop;
 import io.netty.channel.ReflectiveChannelFactory;
 import io.netty.channel.socket.DatagramChannel;
 import io.netty.channel.socket.InternetProtocolFamily;
+import io.netty.channel.socket.SocketChannel;
 import io.netty.resolver.HostsFileEntriesResolver;
 import io.netty.resolver.ResolvedAddressTypes;
-import io.netty.util.internal.UnstableApi;
+import io.netty.util.concurrent.Future;
+import io.netty.util.internal.EmptyArrays;
+import io.netty.util.internal.ObjectUtil;
+import io.netty.util.internal.logging.InternalLogger;
+import io.netty.util.internal.logging.InternalLoggerFactory;
 
+import java.net.InetSocketAddress;
+import java.net.SocketAddress;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-import static io.netty.resolver.dns.DnsServerAddressStreamProviders.platformDefault;
 import static io.netty.util.internal.ObjectUtil.checkNotNull;
 import static io.netty.util.internal.ObjectUtil.intValue;
 
 /**
  * A {@link DnsNameResolver} builder.
  */
-@UnstableApi
 public final class DnsNameResolverBuilder {
-    private EventLoop eventLoop;
-    private ChannelFactory<? extends DatagramChannel> channelFactory;
+
+    private static final InternalLogger logger = InternalLoggerFactory.getInstance(DnsNameResolverBuilder.class);
+    static final SocketAddress DEFAULT_LOCAL_ADDRESS = new InetSocketAddress(0);
+
+    volatile EventLoop eventLoop;
+    private ChannelFactory<? extends DatagramChannel> datagramChannelFactory;
+    private ChannelFactory<? extends SocketChannel> socketChannelFactory;
+    private boolean retryOnTimeout;
+
     private DnsCache resolveCache;
     private DnsCnameCache cnameCache;
     private AuthoritativeDnsServerCache authoritativeDnsServerCache;
+    private SocketAddress localAddress = DEFAULT_LOCAL_ADDRESS;
     private Integer minTtl;
     private Integer maxTtl;
     private Integer negativeTtl;
-    private long queryTimeoutMillis = 5000;
+    private long queryTimeoutMillis = -1;
     private ResolvedAddressTypes resolvedAddressTypes = DnsNameResolver.DEFAULT_RESOLVE_ADDRESS_TYPES;
+    private boolean completeOncePreferredResolved;
     private boolean recursionDesired = true;
-    private int maxQueriesPerResolve = 16;
+    private int maxQueriesPerResolve = -1;
     private boolean traceEnabled;
     private int maxPayloadSize = 4096;
     private boolean optResourceEnabled = true;
     private HostsFileEntriesResolver hostsFileEntriesResolver = HostsFileEntriesResolver.DEFAULT;
-    private DnsServerAddressStreamProvider dnsServerAddressStreamProvider = platformDefault();
+    private DnsServerAddressStreamProvider dnsServerAddressStreamProvider =
+            DnsServerAddressStreamProviders.platformDefault();
+    private DnsServerAddressStream queryDnsServerAddressStream;
     private DnsQueryLifecycleObserverFactory dnsQueryLifecycleObserverFactory =
             NoopDnsQueryLifecycleObserverFactory.INSTANCE;
     private String[] searchDomains;
     private int ndots = -1;
     private boolean decodeIdn = true;
+
+    private int maxNumConsolidation;
+    private DnsNameResolverChannelStrategy datagramChannelStrategy = DnsNameResolverChannelStrategy.ChannelPerResolver;
 
     /**
      * Creates a new builder.
@@ -87,30 +106,151 @@ public final class DnsNameResolverBuilder {
         return this;
     }
 
+    @Deprecated
     protected ChannelFactory<? extends DatagramChannel> channelFactory() {
-        return this.channelFactory;
+        return this.datagramChannelFactory;
+    }
+
+    ChannelFactory<? extends DatagramChannel> datagramChannelFactory() {
+        return this.datagramChannelFactory;
     }
 
     /**
      * Sets the {@link ChannelFactory} that will create a {@link DatagramChannel}.
+     * <p>
+     * If <a href="https://tools.ietf.org/html/rfc7766">TCP fallback</a> should be supported as well it is required
+     * to call the {@link #socketChannelFactory(ChannelFactory)} or {@link #socketChannelType(Class)} method.
      *
-     * @param channelFactory the {@link ChannelFactory}
+     * @param datagramChannelFactory the {@link ChannelFactory}
+     * @return {@code this}
+     * @deprecated use {@link #datagramChannelFactory(ChannelFactory)}
+     */
+    @Deprecated
+    public DnsNameResolverBuilder channelFactory(ChannelFactory<? extends DatagramChannel> datagramChannelFactory) {
+        datagramChannelFactory(datagramChannelFactory);
+        return this;
+    }
+
+    /**
+     * Sets the {@link ChannelFactory} that will create a {@link DatagramChannel}.
+     * <p>
+     * If <a href="https://tools.ietf.org/html/rfc7766">TCP fallback</a> should be supported as well it is required
+     * to call the {@link #socketChannelFactory(ChannelFactory)} or {@link #socketChannelType(Class)} method.
+     *
+     * @param datagramChannelFactory the {@link ChannelFactory}
      * @return {@code this}
      */
-    public DnsNameResolverBuilder channelFactory(ChannelFactory<? extends DatagramChannel> channelFactory) {
-        this.channelFactory = channelFactory;
+    public DnsNameResolverBuilder datagramChannelFactory(
+            ChannelFactory<? extends DatagramChannel> datagramChannelFactory) {
+        this.datagramChannelFactory = datagramChannelFactory;
         return this;
     }
 
     /**
      * Sets the {@link ChannelFactory} as a {@link ReflectiveChannelFactory} of this type.
      * Use as an alternative to {@link #channelFactory(ChannelFactory)}.
+     * <p>
+     * If <a href="https://tools.ietf.org/html/rfc7766">TCP fallback</a> should be supported as well it is required
+     * to call the {@link #socketChannelFactory(ChannelFactory)} or {@link #socketChannelType(Class)} method.
+     *
+     * @param channelType the type
+     * @return {@code this}
+     * @deprecated use {@link #datagramChannelType(Class)}
+     */
+    @Deprecated
+    public DnsNameResolverBuilder channelType(Class<? extends DatagramChannel> channelType) {
+        return datagramChannelFactory(new ReflectiveChannelFactory<DatagramChannel>(channelType));
+    }
+
+    /**
+     * Sets the {@link ChannelFactory} as a {@link ReflectiveChannelFactory} of this type.
+     * Use as an alternative to {@link #datagramChannelFactory(ChannelFactory)}.
+     * <p>
+     * If <a href="https://tools.ietf.org/html/rfc7766">TCP fallback</a> should be supported as well it is required
+     * to call the {@link #socketChannelFactory(ChannelFactory)} or {@link #socketChannelType(Class)} method.
      *
      * @param channelType the type
      * @return {@code this}
      */
-    public DnsNameResolverBuilder channelType(Class<? extends DatagramChannel> channelType) {
-        return channelFactory(new ReflectiveChannelFactory<DatagramChannel>(channelType));
+    public DnsNameResolverBuilder datagramChannelType(Class<? extends DatagramChannel> channelType) {
+        return datagramChannelFactory(new ReflectiveChannelFactory<DatagramChannel>(channelType));
+    }
+
+    /**
+     * Sets the {@link ChannelFactory} that will create a {@link SocketChannel} for
+     * <a href="https://tools.ietf.org/html/rfc7766">TCP fallback</a> if needed.
+     * <p>
+     * TCP fallback is <strong>not</strong> enabled by default and must be enabled by providing a non-null
+     * {@link ChannelFactory} for this method.
+     *
+     * @param channelFactory the {@link ChannelFactory} or {@code null}
+     *                       if <a href="https://tools.ietf.org/html/rfc7766">TCP fallback</a> should not be supported.
+     *                       By default, TCP fallback is not enabled.
+     * @return {@code this}
+     */
+    public DnsNameResolverBuilder socketChannelFactory(ChannelFactory<? extends SocketChannel> channelFactory) {
+        return socketChannelFactory(channelFactory, false);
+    }
+
+    /**
+     * Sets the {@link ChannelFactory} as a {@link ReflectiveChannelFactory} of this type for
+     * <a href="https://tools.ietf.org/html/rfc7766">TCP fallback</a> if needed.
+     * Use as an alternative to {@link #socketChannelFactory(ChannelFactory)}.
+     * <p>
+     * TCP fallback is <strong>not</strong> enabled by default and must be enabled by providing a non-null
+     * {@code channelType} for this method.
+     *
+     * @param channelType the type or {@code null} if <a href="https://tools.ietf.org/html/rfc7766">TCP fallback</a>
+     *                    should not be supported. By default, TCP fallback is not enabled.
+     * @return {@code this}
+     */
+    public DnsNameResolverBuilder socketChannelType(Class<? extends SocketChannel> channelType) {
+        return socketChannelType(channelType, false);
+    }
+
+    /**
+     * Sets the {@link ChannelFactory} that will create a {@link SocketChannel} for
+     * <a href="https://tools.ietf.org/html/rfc7766">TCP fallback</a> if needed.
+     * <p>
+     * TCP fallback is <strong>not</strong> enabled by default and must be enabled by providing a non-null
+     * {@link ChannelFactory} for this method.
+     *
+     * @param channelFactory the {@link ChannelFactory} or {@code null}
+     *                       if <a href="https://tools.ietf.org/html/rfc7766">TCP fallback</a> should not be supported.
+     *                       By default, TCP fallback is not enabled.
+     * @param retryOnTimeout if {@code true} the {@link DnsNameResolver} will also fallback to TCP if a timeout
+     *                       was detected, if {@code false} it will only try to use TCP if the response was marked
+     *                       as truncated.
+     * @return {@code this}
+     */
+    public DnsNameResolverBuilder socketChannelFactory(
+            ChannelFactory<? extends SocketChannel> channelFactory, boolean retryOnTimeout) {
+        this.socketChannelFactory = channelFactory;
+        this.retryOnTimeout = retryOnTimeout;
+        return this;
+    }
+
+    /**
+     * Sets the {@link ChannelFactory} as a {@link ReflectiveChannelFactory} of this type for
+     * <a href="https://tools.ietf.org/html/rfc7766">TCP fallback</a> if needed.
+     * Use as an alternative to {@link #socketChannelFactory(ChannelFactory)}.
+     * <p>
+     * TCP fallback is <strong>not</strong> enabled by default and must be enabled by providing a non-null
+     * {@code channelType} for this method.
+     *
+     * @param channelType the type or {@code null} if <a href="https://tools.ietf.org/html/rfc7766">TCP fallback</a>
+     *                    should not be supported. By default, TCP fallback is not enabled.
+     * @param retryOnTimeout if {@code true} the {@link DnsNameResolver} will also fallback to TCP if a timeout
+     *                       was detected, if {@code false} it will only try to use TCP if the response was marked
+     *                       as truncated.
+     * @return {@code this}
+     */
+    public DnsNameResolverBuilder socketChannelType(
+            Class<? extends SocketChannel> channelType, boolean retryOnTimeout) {
+        if (channelType == null) {
+            return socketChannelFactory(null, retryOnTimeout);
+        }
+        return socketChannelFactory(new ReflectiveChannelFactory<SocketChannel>(channelType), retryOnTimeout);
     }
 
     /**
@@ -171,6 +311,16 @@ public final class DnsNameResolverBuilder {
     }
 
     /**
+     * Configure the address that will be used to bind too. If {@code null} the default will be used.
+     * @param localAddress the bind address
+     * @return {@code this}
+     */
+    public DnsNameResolverBuilder localAddress(SocketAddress localAddress) {
+        this.localAddress = localAddress;
+        return this;
+    }
+
+    /**
      * Sets the minimum and maximum TTL of the cached DNS resource records (in seconds). If the TTL of the DNS
      * resource record returned by the DNS server is less than the minimum TTL or greater than the maximum TTL,
      * this resolver will ignore the TTL from the DNS server and use the minimum TTL or the maximum TTL instead
@@ -201,6 +351,7 @@ public final class DnsNameResolverBuilder {
 
     /**
      * Sets the timeout of each DNS query performed by this resolver (in milliseconds).
+     * {@code 0} disables the timeout. If not set or a negative number is set, the default timeout is used.
      *
      * @param queryTimeoutMillis the query timeout
      * @return {@code this}
@@ -254,6 +405,18 @@ public final class DnsNameResolverBuilder {
     }
 
     /**
+     * If {@code true} {@link DnsNameResolver#resolveAll(String)} will notify the returned {@link Future} as
+     * soon as all queries for the preferred address-type are complete.
+     *
+     * @param completeOncePreferredResolved {@code true} to enable, {@code false} to disable.
+     * @return {@code this}
+     */
+    public DnsNameResolverBuilder completeOncePreferredResolved(boolean completeOncePreferredResolved) {
+        this.completeOncePreferredResolved = completeOncePreferredResolved;
+        return this;
+    }
+
+    /**
      * Sets if this resolver has to send a DNS query with the RD (recursion desired) flag set.
      *
      * @param recursionDesired true if recursion is desired
@@ -281,7 +444,10 @@ public final class DnsNameResolverBuilder {
      *
      * @param traceEnabled true if trace is enabled
      * @return {@code this}
+     * @deprecated Prefer to {@linkplain #dnsQueryLifecycleObserverFactory(DnsQueryLifecycleObserverFactory) configure}
+     * a {@link LoggingDnsQueryLifeCycleObserverFactory} instead.
      */
+    @Deprecated
     public DnsNameResolverBuilder traceEnabled(boolean traceEnabled) {
         this.traceEnabled = traceEnabled;
         return this;
@@ -336,6 +502,20 @@ public final class DnsNameResolverBuilder {
         return this;
     }
 
+    protected DnsServerAddressStream queryServerAddressStream() {
+        return this.queryDnsServerAddressStream;
+    }
+
+    /**
+     * Set the {@link DnsServerAddressStream} which provides the server address for DNS queries.
+     * @return {@code this}.
+     */
+    public DnsNameResolverBuilder queryServerAddressStream(DnsServerAddressStream queryServerAddressStream) {
+        this.queryDnsServerAddressStream =
+                checkNotNull(queryServerAddressStream, "queryServerAddressStream");
+        return this;
+    }
+
     /**
      * Set the list of search domains of the resolver.
      *
@@ -360,7 +540,7 @@ public final class DnsNameResolverBuilder {
             list.add(f);
         }
 
-        this.searchDomains = list.toArray(new String[0]);
+        this.searchDomains = list.toArray(EmptyArrays.EMPTY_STRINGS);
         return this;
     }
 
@@ -376,11 +556,17 @@ public final class DnsNameResolverBuilder {
         return this;
     }
 
-    private DnsCache newCache() {
+   DnsCache getOrNewCache() {
+        if (this.resolveCache != null) {
+            return this.resolveCache;
+        }
         return new DefaultDnsCache(intValue(minTtl, 0), intValue(maxTtl, Integer.MAX_VALUE), intValue(negativeTtl, 0));
     }
 
-    private AuthoritativeDnsServerCache newAuthoritativeDnsServerCache() {
+   AuthoritativeDnsServerCache getOrNewAuthoritativeDnsServerCache() {
+        if (this.authoritativeDnsServerCache != null) {
+            return this.authoritativeDnsServerCache;
+        }
         return new DefaultAuthoritativeDnsServerCache(
                 intValue(minTtl, 0), intValue(maxTtl, Integer.MAX_VALUE),
                 // Let us use the sane ordering as DnsNameResolver will be used when returning
@@ -388,7 +574,15 @@ public final class DnsNameResolverBuilder {
                 new NameServerComparator(DnsNameResolver.preferredAddressType(resolvedAddressTypes).addressType()));
     }
 
-    private DnsCnameCache newCnameCache() {
+    private DnsServerAddressStream newQueryServerAddressStream(
+            DnsServerAddressStreamProvider dnsServerAddressStreamProvider) {
+        return new ThreadLocalNameServerAddressStream(dnsServerAddressStreamProvider);
+    }
+
+   DnsCnameCache getOrNewCnameCache() {
+        if (this.cnameCache != null) {
+            return this.cnameCache;
+        }
         return new DefaultDnsCnameCache(
                 intValue(minTtl, 0), intValue(maxTtl, Integer.MAX_VALUE));
     }
@@ -406,6 +600,33 @@ public final class DnsNameResolverBuilder {
     }
 
     /**
+     * Set the maximum size of the cache that is used to consolidate lookups for different hostnames when in-flight.
+     * This means if multiple lookups are done for the same hostname and still in-flight only one actual query will
+     * be made and the result will be cascaded to the others.
+     *
+     * @param maxNumConsolidation the maximum lookups to consolidate (different hostnames), or {@code 0} if
+     *                            no consolidation should be performed.
+     * @return {@code this}
+     */
+    public DnsNameResolverBuilder consolidateCacheSize(int maxNumConsolidation) {
+        this.maxNumConsolidation = ObjectUtil.checkPositiveOrZero(maxNumConsolidation, "maxNumConsolidation");
+        return this;
+    }
+
+    /**
+     * Set the strategy that is used to determine how a {@link DatagramChannel} is used by the resolver for sending
+     * queries over UDP protocol.
+     *
+     * @param datagramChannelStrategy  the {@link DnsNameResolverChannelStrategy} to use when doing queries over
+     *                                 UDP protocol.
+     * @return {@code this}
+     */
+    public DnsNameResolverBuilder datagramChannelStrategy(DnsNameResolverChannelStrategy datagramChannelStrategy) {
+        this.datagramChannelStrategy = ObjectUtil.checkNotNull(datagramChannelStrategy, "datagramChannelStrategy");
+        return this;
+    }
+
+    /**
      * Returns a new {@link DnsNameResolver} instance.
      *
      * @return a {@link DnsNameResolver}
@@ -416,23 +637,33 @@ public final class DnsNameResolverBuilder {
         }
 
         if (resolveCache != null && (minTtl != null || maxTtl != null || negativeTtl != null)) {
-            throw new IllegalStateException("resolveCache and TTLs are mutually exclusive");
+            logger.debug("resolveCache and TTLs are mutually exclusive. TTLs are ignored.");
+        }
+
+        if (cnameCache != null && (minTtl != null || maxTtl != null || negativeTtl != null)) {
+            logger.debug("cnameCache and TTLs are mutually exclusive. TTLs are ignored.");
         }
 
         if (authoritativeDnsServerCache != null && (minTtl != null || maxTtl != null || negativeTtl != null)) {
-            throw new IllegalStateException("authoritativeDnsServerCache and TTLs are mutually exclusive");
+            logger.debug("authoritativeDnsServerCache and TTLs are mutually exclusive. TTLs are ignored.");
         }
 
-        DnsCache resolveCache = this.resolveCache != null ? this.resolveCache : newCache();
-        DnsCnameCache cnameCache = this.cnameCache != null ? this.cnameCache : newCnameCache();
-        AuthoritativeDnsServerCache authoritativeDnsServerCache = this.authoritativeDnsServerCache != null ?
-                this.authoritativeDnsServerCache : newAuthoritativeDnsServerCache();
+        DnsCache resolveCache = getOrNewCache();
+        DnsCnameCache cnameCache = getOrNewCnameCache();
+        AuthoritativeDnsServerCache authoritativeDnsServerCache = getOrNewAuthoritativeDnsServerCache();
+
+        DnsServerAddressStream queryDnsServerAddressStream = this.queryDnsServerAddressStream != null ?
+                this.queryDnsServerAddressStream : newQueryServerAddressStream(dnsServerAddressStreamProvider);
+
         return new DnsNameResolver(
                 eventLoop,
-                channelFactory,
+                datagramChannelFactory,
+                socketChannelFactory,
+                retryOnTimeout,
                 resolveCache,
                 cnameCache,
                 authoritativeDnsServerCache,
+                localAddress,
                 dnsQueryLifecycleObserverFactory,
                 queryTimeoutMillis,
                 resolvedAddressTypes,
@@ -443,9 +674,13 @@ public final class DnsNameResolverBuilder {
                 optResourceEnabled,
                 hostsFileEntriesResolver,
                 dnsServerAddressStreamProvider,
+                queryDnsServerAddressStream,
                 searchDomains,
                 ndots,
-                decodeIdn);
+                decodeIdn,
+                completeOncePreferredResolved,
+                maxNumConsolidation,
+                datagramChannelStrategy);
     }
 
     /**
@@ -460,9 +695,11 @@ public final class DnsNameResolverBuilder {
             copiedBuilder.eventLoop(eventLoop);
         }
 
-        if (channelFactory != null) {
-            copiedBuilder.channelFactory(channelFactory);
+        if (datagramChannelFactory != null) {
+            copiedBuilder.datagramChannelFactory(datagramChannelFactory);
         }
+
+        copiedBuilder.socketChannelFactory(socketChannelFactory, retryOnTimeout);
 
         if (resolveCache != null) {
             copiedBuilder.resolveCache(resolveCache);
@@ -500,13 +737,20 @@ public final class DnsNameResolverBuilder {
             copiedBuilder.nameServerProvider(dnsServerAddressStreamProvider);
         }
 
+        if (queryDnsServerAddressStream != null) {
+            copiedBuilder.queryServerAddressStream(queryDnsServerAddressStream);
+        }
+
         if (searchDomains != null) {
             copiedBuilder.searchDomains(Arrays.asList(searchDomains));
         }
 
         copiedBuilder.ndots(ndots);
         copiedBuilder.decodeIdn(decodeIdn);
-
+        copiedBuilder.completeOncePreferredResolved(completeOncePreferredResolved);
+        copiedBuilder.localAddress(localAddress);
+        copiedBuilder.consolidateCacheSize(maxNumConsolidation);
+        copiedBuilder.datagramChannelStrategy(datagramChannelStrategy);
         return copiedBuilder;
     }
 }

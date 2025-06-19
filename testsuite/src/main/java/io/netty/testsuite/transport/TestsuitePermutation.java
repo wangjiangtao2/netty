@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -16,6 +16,7 @@
 package io.netty.testsuite.transport;
 
 import io.netty.bootstrap.AbstractBootstrap;
+import io.netty.buffer.AdaptiveByteBufAllocator;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.PooledByteBufAllocator;
 import io.netty.buffer.UnpooledByteBufAllocator;
@@ -24,11 +25,13 @@ import java.util.ArrayList;
 import java.util.List;
 
 public final class TestsuitePermutation {
+    private static final AdaptiveByteBufAllocator DEFAULT_ADAPTIVE_ALLOCATOR = new AdaptiveByteBufAllocator();
 
     public static List<ByteBufAllocator> allocator() {
         List<ByteBufAllocator> allocators = new ArrayList<ByteBufAllocator>();
         allocators.add(UnpooledByteBufAllocator.DEFAULT);
         allocators.add(PooledByteBufAllocator.DEFAULT);
+        allocators.add(DEFAULT_ADAPTIVE_ALLOCATOR);
         return allocators;
     }
 

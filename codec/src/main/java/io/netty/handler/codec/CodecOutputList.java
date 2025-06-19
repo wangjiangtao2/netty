@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -96,6 +96,7 @@ final class CodecOutputList extends AbstractList<Object> implements RandomAccess
 
     private final CodecOutputListRecycler recycler;
     private int size;
+    private int maxSeenSize;
     private Object[] array;
     private boolean insertSinceRecycled;
 
@@ -174,6 +175,7 @@ final class CodecOutputList extends AbstractList<Object> implements RandomAccess
     public void clear() {
         // We only set the size to 0 and not null out the array. Null out the array will explicit requested by
         // calling recycle()
+        maxSeenSize = Math.max(maxSeenSize, size);
         size = 0;
     }
 
@@ -188,10 +190,12 @@ final class CodecOutputList extends AbstractList<Object> implements RandomAccess
      * Recycle the array which will clear it and null out all entries in the internal storage.
      */
     void recycle() {
-        for (int i = 0 ; i < size; i ++) {
+        int len = Math.max(maxSeenSize, size);
+        for (int i = 0; i < len; i ++) {
             array[i] = null;
         }
         size = 0;
+        maxSeenSize = 0;
         insertSinceRecycled = false;
 
         recycler.recycle(this);
@@ -206,7 +210,8 @@ final class CodecOutputList extends AbstractList<Object> implements RandomAccess
 
     private void checkIndex(int index) {
         if (index >= size) {
-            throw new IndexOutOfBoundsException();
+            throw new IndexOutOfBoundsException("expected: index < ("
+                    + size + "),but actual is (" + size + ")");
         }
     }
 

@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -15,22 +15,19 @@
  */
 package io.netty.handler.ssl;
 
-import org.junit.BeforeClass;
+import org.junit.jupiter.api.BeforeAll;
 
 import java.util.concurrent.atomic.AtomicReference;
 
 import javax.net.ssl.SSLException;
 
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.instanceOf;
-import static org.hamcrest.Matchers.is;
-import static org.junit.Assume.assumeTrue;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
 public class OpenSslRenegotiateTest extends RenegotiateTest {
 
-    @BeforeClass
+    @BeforeAll
     public static void checkOpenSsl() {
-        assumeTrue(OpenSsl.isAvailable());
+        OpenSsl.ensureAvailability();
     }
 
     @Override
@@ -40,7 +37,7 @@ public class OpenSslRenegotiateTest extends RenegotiateTest {
 
     protected void verifyResult(AtomicReference<Throwable> error) throws Throwable {
         Throwable cause = error.get();
-        // Renegotation is not supported by the OpenSslEngine.
-        assertThat(cause, is(instanceOf(SSLException.class)));
+        // Renegotiation is not supported by the OpenSslEngine.
+        assertInstanceOf(SSLException.class, cause);
     }
 }

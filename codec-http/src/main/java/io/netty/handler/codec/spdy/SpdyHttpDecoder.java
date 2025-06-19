@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -26,12 +26,15 @@ import io.netty.handler.codec.http.FullHttpMessage;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
+import io.netty.handler.codec.http.DefaultHttpHeadersFactory;
+import io.netty.handler.codec.http.HttpHeadersFactory;
 import io.netty.handler.codec.http.HttpUtil;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.spdy.SpdyHttpHeaders.Names;
 import io.netty.util.ReferenceCountUtil;
+import io.netty.util.internal.ObjectUtil;
 
 import java.util.HashMap;
 import java.util.List;
@@ -46,10 +49,11 @@ import static io.netty.util.internal.ObjectUtil.checkPositive;
  */
 public class SpdyHttpDecoder extends MessageToMessageDecoder<SpdyFrame> {
 
-    private final boolean validateHeaders;
     private final int spdyVersion;
     private final int maxContentLength;
     private final Map<Integer, FullHttpMessage> messageMap;
+    private final HttpHeadersFactory headersFactory;
+    private final HttpHeadersFactory trailersFactory;
 
     /**
      * Creates a new instance.
@@ -60,7 +64,8 @@ public class SpdyHttpDecoder extends MessageToMessageDecoder<SpdyFrame> {
      *        a {@link TooLongFrameException} will be raised.
      */
     public SpdyHttpDecoder(SpdyVersion version, int maxContentLength) {
-        this(version, maxContentLength, new HashMap<Integer, FullHttpMessage>(), true);
+        this(version, maxContentLength, new HashMap<Integer, FullHttpMessage>(),
+                DefaultHttpHeadersFactory.headersFactory(), DefaultHttpHeadersFactory.trailersFactory());
     }
 
     /**
@@ -71,7 +76,10 @@ public class SpdyHttpDecoder extends MessageToMessageDecoder<SpdyFrame> {
      *        If the length of the message content exceeds this value,
      *        a {@link TooLongFrameException} will be raised.
      * @param validateHeaders {@code true} if http headers should be validated
+     * @deprecated Use the {@link #SpdyHttpDecoder(SpdyVersion, int, Map, HttpHeadersFactory, HttpHeadersFactory)}
+     * constructor instead.
      */
+    @Deprecated
     public SpdyHttpDecoder(SpdyVersion version, int maxContentLength, boolean validateHeaders) {
         this(version, maxContentLength, new HashMap<Integer, FullHttpMessage>(), validateHeaders);
     }
@@ -86,7 +94,8 @@ public class SpdyHttpDecoder extends MessageToMessageDecoder<SpdyFrame> {
      * @param messageMap the {@link Map} used to hold partially received messages.
      */
     protected SpdyHttpDecoder(SpdyVersion version, int maxContentLength, Map<Integer, FullHttpMessage> messageMap) {
-        this(version, maxContentLength, messageMap, true);
+        this(version, maxContentLength, messageMap,
+                DefaultHttpHeadersFactory.headersFactory(), DefaultHttpHeadersFactory.trailersFactory());
     }
 
     /**
@@ -98,17 +107,35 @@ public class SpdyHttpDecoder extends MessageToMessageDecoder<SpdyFrame> {
      *        a {@link TooLongFrameException} will be raised.
      * @param messageMap the {@link Map} used to hold partially received messages.
      * @param validateHeaders {@code true} if http headers should be validated
+     * @deprecated Use the {@link #SpdyHttpDecoder(SpdyVersion, int, Map, HttpHeadersFactory, HttpHeadersFactory)}
+     * constructor instead.
      */
+    @Deprecated
     protected SpdyHttpDecoder(SpdyVersion version, int maxContentLength, Map<Integer,
             FullHttpMessage> messageMap, boolean validateHeaders) {
-        if (version == null) {
-            throw new NullPointerException("version");
-        }
-        checkPositive(maxContentLength, "maxContentLength");
-        spdyVersion = version.getVersion();
-        this.maxContentLength = maxContentLength;
+        this(version, maxContentLength, messageMap,
+                DefaultHttpHeadersFactory.headersFactory().withValidation(validateHeaders),
+                DefaultHttpHeadersFactory.trailersFactory().withValidation(validateHeaders));
+    }
+
+    /**
+     * Creates a new instance with the specified parameters.
+     *
+     * @param version the protocol version
+     * @param maxContentLength the maximum length of the message content.
+     *        If the length of the message content exceeds this value,
+     *        a {@link TooLongFrameException} will be raised.
+     * @param messageMap the {@link Map} used to hold partially received messages.
+     * @param headersFactory The factory used for creating HTTP headers
+     * @param trailersFactory The factory used for creating HTTP trailers.
+     */
+    protected SpdyHttpDecoder(SpdyVersion version, int maxContentLength, Map<Integer,
+            FullHttpMessage> messageMap, HttpHeadersFactory headersFactory, HttpHeadersFactory trailersFactory) {
+        spdyVersion = ObjectUtil.checkNotNull(version, "version").version();
+        this.maxContentLength = checkPositive(maxContentLength, "maxContentLength");
         this.messageMap = messageMap;
-        this.validateHeaders = validateHeaders;
+        this.headersFactory = headersFactory;
+        this.trailersFactory = trailersFactory;
     }
 
     @Override
@@ -193,7 +220,7 @@ public class SpdyHttpDecoder extends MessageToMessageDecoder<SpdyFrame> {
                 // SYN_STREAM frames initiated by the client are HTTP requests
 
                 // If a client sends a request with a truncated header block, the server must
-                // reply with a HTTP 431 REQUEST HEADER FIELDS TOO LARGE reply.
+                // reply with an HTTP 431 REQUEST HEADER FIELDS TOO LARGE reply.
                 if (spdySynStreamFrame.isTruncated()) {
                     SpdySynReplyFrame spdySynReplyFrame = new DefaultSpdySynReplyFrame(streamId);
                     spdySynReplyFrame.setLast(true);
@@ -218,7 +245,7 @@ public class SpdyHttpDecoder extends MessageToMessageDecoder<SpdyFrame> {
                     }
                 } catch (Throwable t) {
                     // If a client sends a SYN_STREAM without all of the getMethod, url (host and path),
-                    // scheme, and version headers the server must reply with a HTTP 400 BAD REQUEST reply.
+                    // scheme, and version headers the server must reply with an HTTP 400 BAD REQUEST reply.
                     // Also sends HTTP 400 BAD REQUEST reply if header name/value pairs are invalid
                     SpdySynReplyFrame spdySynReplyFrame = new DefaultSpdySynReplyFrame(streamId);
                     spdySynReplyFrame.setLast(true);
@@ -245,7 +272,7 @@ public class SpdyHttpDecoder extends MessageToMessageDecoder<SpdyFrame> {
 
             try {
                 FullHttpResponse httpResponseWithEntity =
-                   createHttpResponse(spdySynReplyFrame, ctx.alloc(), validateHeaders);
+                   createHttpResponse(spdySynReplyFrame, ctx.alloc());
 
                 // Set the Stream-ID as a header
                 httpResponseWithEntity.headers().setInt(Names.STREAM_ID, streamId);
@@ -285,7 +312,7 @@ public class SpdyHttpDecoder extends MessageToMessageDecoder<SpdyFrame> {
                     }
 
                     try {
-                        fullHttpMessage = createHttpResponse(spdyHeadersFrame, ctx.alloc(), validateHeaders);
+                        fullHttpMessage = createHttpResponse(spdyHeadersFrame, ctx.alloc());
 
                         // Set the Stream-ID as a header
                         fullHttpMessage.headers().setInt(Names.STREAM_ID, streamId);
@@ -336,7 +363,8 @@ public class SpdyHttpDecoder extends MessageToMessageDecoder<SpdyFrame> {
             if (content.readableBytes() > maxContentLength - spdyDataFrame.content().readableBytes()) {
                 removeMessage(streamId);
                 throw new TooLongFrameException(
-                        "HTTP content length exceeded " + maxContentLength + " bytes.");
+                        "HTTP content length exceeded " + maxContentLength + " bytes: "
+                                + spdyDataFrame.content().readableBytes());
             }
 
             ByteBuf spdyDataFrameData = spdyDataFrame.content();
@@ -399,8 +427,8 @@ public class SpdyHttpDecoder extends MessageToMessageDecoder<SpdyFrame> {
         }
     }
 
-    private static FullHttpResponse createHttpResponse(SpdyHeadersFrame responseFrame, ByteBufAllocator alloc,
-                                                       boolean validateHeaders) throws Exception {
+    private FullHttpResponse createHttpResponse(SpdyHeadersFrame responseFrame, ByteBufAllocator alloc)
+            throws Exception {
 
         // Create the first line of the response from the name/value pairs
         SpdyHeaders headers = responseFrame.headers();
@@ -412,7 +440,8 @@ public class SpdyHttpDecoder extends MessageToMessageDecoder<SpdyFrame> {
         boolean release = true;
         ByteBuf buffer = alloc.buffer();
         try {
-            FullHttpResponse res = new DefaultFullHttpResponse(version, status, buffer, validateHeaders);
+            FullHttpResponse res = new DefaultFullHttpResponse(
+                    version, status, buffer, headersFactory, trailersFactory);
             for (Map.Entry<CharSequence, CharSequence> e: responseFrame.headers()) {
                 res.headers().add(e.getKey(), e.getValue());
             }

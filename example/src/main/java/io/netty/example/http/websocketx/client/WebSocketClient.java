@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -49,7 +49,7 @@ import java.net.URI;
  * Therefore you can either start the WebSocket server from the examples
  * by running {@link io.netty.example.http.websocketx.server.WebSocketServer}
  * or connect to an existing WebSocket server such as
- * <a href="http://www.websocket.org/echo.html">ws://echo.websocket.org</a>.
+ * <a href="https://www.websocket.org/echo.html">ws://echo.websocket.org</a>.
  * <p>
  * The client will attempt to connect to the URI passed to it as the first argument.
  * You don't have to specify any arguments if you want to connect to the example WebSocket server,
@@ -58,6 +58,7 @@ import java.net.URI;
 public final class WebSocketClient {
 
     static final String URL = System.getProperty("url", "ws://127.0.0.1:8080/websocket");
+    static final int MAX_CONTENT_LENGTH = 8192;
 
     public static void main(String[] args) throws Exception {
         URI uri = new URI(URL);
@@ -112,8 +113,8 @@ public final class WebSocketClient {
                      }
                      p.addLast(
                              new HttpClientCodec(),
-                             new HttpObjectAggregator(8192),
-                             WebSocketClientCompressionHandler.INSTANCE,
+                             new HttpObjectAggregator(MAX_CONTENT_LENGTH),
+                             new WebSocketClientCompressionHandler(MAX_CONTENT_LENGTH),
                              handler);
                  }
              });

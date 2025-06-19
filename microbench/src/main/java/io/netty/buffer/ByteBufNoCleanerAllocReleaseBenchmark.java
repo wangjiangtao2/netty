@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -29,7 +29,11 @@ import org.openjdk.jmh.annotations.Warmup;
 @Measurement(iterations = 10)
 public class ByteBufNoCleanerAllocReleaseBenchmark extends AbstractByteBufNoCleanerBenchmark {
 
-    @Param({ "64", "1024", "8192" })
+    @Param({
+            "64",
+            "1024",
+            "8192",
+    })
     public int initialCapacity;
 
     @Benchmark

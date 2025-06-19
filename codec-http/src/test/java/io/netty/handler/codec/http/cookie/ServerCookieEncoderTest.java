@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -15,12 +15,12 @@
  */
 package io.netty.handler.codec.http.cookie;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertTrue;
-import static org.junit.matchers.JUnitMatchers.containsString;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import io.netty.handler.codec.DateFormatter;
 
 import java.text.ParseException;
@@ -32,7 +32,8 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import org.junit.Test;
+import io.netty.handler.codec.http.cookie.CookieHeaderNames.SameSite;
+import org.junit.jupiter.api.Test;
 
 public class ServerCookieEncoderTest {
 
@@ -41,13 +42,15 @@ public class ServerCookieEncoderTest {
 
         int maxAge = 50;
 
-        String result =
-                "myCookie=myValue; Max-Age=50; Expires=(.+?); Path=/apathsomewhere; Domain=.adomainsomewhere; Secure";
-        Cookie cookie = new DefaultCookie("myCookie", "myValue");
+        String result = "myCookie=myValue; Max-Age=50; Expires=(.+?); Path=/apathsomewhere;" +
+                " Domain=.adomainsomewhere; Secure; SameSite=Lax; Partitioned";
+        DefaultCookie cookie = new DefaultCookie("myCookie", "myValue");
         cookie.setDomain(".adomainsomewhere");
         cookie.setMaxAge(maxAge);
         cookie.setPath("/apathsomewhere");
         cookie.setSecure(true);
+        cookie.setSameSite(SameSite.Lax);
+        cookie.setPartitioned(true);
 
         String encodedCookie = ServerCookieEncoder.STRICT.encode(cookie);
 
@@ -138,7 +141,7 @@ public class ServerCookieEncoderTest {
         try {
             ServerCookieEncoder.STRICT.encode(new DefaultCookie("name", "\"value,\""));
         } catch (IllegalArgumentException e) {
-            assertThat(e.getMessage().toLowerCase(), containsString("cookie value contains an invalid char: ,"));
+            assertThat(e.getMessage().toLowerCase()).contains("cookie value contains an invalid char: ,");
         }
     }
 

@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -28,13 +28,20 @@ import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import io.netty.handler.codec.http.websocketx.WebSocketFrame;
 import io.netty.handler.codec.http.websocketx.extensions.WebSocketExtension;
 import io.netty.handler.codec.http.websocketx.extensions.WebSocketExtensionFilter;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.function.Executable;
 
 import java.util.Random;
 
 import static io.netty.handler.codec.http.websocketx.extensions.WebSocketExtensionFilter.*;
+import static io.netty.handler.codec.http.websocketx.extensions.compression.DeflateDecoder.*;
 import static io.netty.util.CharsetUtil.*;
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class PerMessageDeflateDecoderTest {
 
@@ -44,7 +51,7 @@ public class PerMessageDeflateDecoderTest {
     public void testCompressedFrame() {
         EmbeddedChannel encoderChannel = new EmbeddedChannel(
                 ZlibCodecFactory.newZlibEncoder(ZlibWrapper.NONE, 9, 15, 8));
-        EmbeddedChannel decoderChannel = new EmbeddedChannel(new PerMessageDeflateDecoder(false));
+        EmbeddedChannel decoderChannel = new EmbeddedChannel(new PerMessageDeflateDecoder(false, 0));
 
         // initialize
         byte[] payload = new byte[300];
@@ -75,7 +82,7 @@ public class PerMessageDeflateDecoderTest {
 
     @Test
     public void testNormalFrame() {
-        EmbeddedChannel decoderChannel = new EmbeddedChannel(new PerMessageDeflateDecoder(false));
+        EmbeddedChannel decoderChannel = new EmbeddedChannel(new PerMessageDeflateDecoder(false, 0));
 
         // initialize
         byte[] payload = new byte[300];
@@ -104,7 +111,7 @@ public class PerMessageDeflateDecoderTest {
     public void testFragmentedFrame() {
         EmbeddedChannel encoderChannel = new EmbeddedChannel(
                 ZlibCodecFactory.newZlibEncoder(ZlibWrapper.NONE, 9, 15, 8));
-        EmbeddedChannel decoderChannel = new EmbeddedChannel(new PerMessageDeflateDecoder(false));
+        EmbeddedChannel decoderChannel = new EmbeddedChannel(new PerMessageDeflateDecoder(false, 0));
 
         // initialize
         byte[] payload = new byte[300];
@@ -154,7 +161,7 @@ public class PerMessageDeflateDecoderTest {
     public void testMultiCompressedPayloadWithinFrame() {
         EmbeddedChannel encoderChannel = new EmbeddedChannel(
                 ZlibCodecFactory.newZlibEncoder(ZlibWrapper.NONE, 9, 15, 8));
-        EmbeddedChannel decoderChannel = new EmbeddedChannel(new PerMessageDeflateDecoder(false));
+        EmbeddedChannel decoderChannel = new EmbeddedChannel(new PerMessageDeflateDecoder(false, 0));
 
         // initialize
         byte[] payload1 = new byte[100];
@@ -196,7 +203,7 @@ public class PerMessageDeflateDecoderTest {
     public void testDecompressionSkipForBinaryFrame() {
         EmbeddedChannel encoderChannel = new EmbeddedChannel(
                 ZlibCodecFactory.newZlibEncoder(ZlibWrapper.NONE, 9, 15, 8));
-        EmbeddedChannel decoderChannel = new EmbeddedChannel(new PerMessageDeflateDecoder(false, ALWAYS_SKIP));
+        EmbeddedChannel decoderChannel = new EmbeddedChannel(new PerMessageDeflateDecoder(false, ALWAYS_SKIP, 0));
 
         byte[] payload = new byte[300];
         random.nextBytes(payload);
@@ -229,7 +236,7 @@ public class PerMessageDeflateDecoderTest {
         EmbeddedChannel encoderChannel = new EmbeddedChannel(
                 ZlibCodecFactory.newZlibEncoder(ZlibWrapper.NONE, 9, 15, 8));
         EmbeddedChannel decoderChannel = new EmbeddedChannel(
-                new PerMessageDeflateDecoder(false, selectivityDecompressionFilter));
+                new PerMessageDeflateDecoder(false, selectivityDecompressionFilter, 0));
 
         String textPayload = "compressed payload";
         byte[] binaryPayload = new byte[300];
@@ -263,7 +270,7 @@ public class PerMessageDeflateDecoderTest {
         assertFalse(decoderChannel.finish());
     }
 
-    @Test(expected = DecoderException.class)
+    @Test
     public void testIllegalStateWhenDecompressionInProgress() {
         WebSocketExtensionFilter selectivityDecompressionFilter = new WebSocketExtensionFilter() {
             @Override
@@ -274,8 +281,8 @@ public class PerMessageDeflateDecoderTest {
 
         EmbeddedChannel encoderChannel = new EmbeddedChannel(
                 ZlibCodecFactory.newZlibEncoder(ZlibWrapper.NONE, 9, 15, 8));
-        EmbeddedChannel decoderChannel = new EmbeddedChannel(
-                new PerMessageDeflateDecoder(false, selectivityDecompressionFilter));
+        final EmbeddedChannel decoderChannel = new EmbeddedChannel(
+                new PerMessageDeflateDecoder(false, selectivityDecompressionFilter, 0));
 
         byte[] firstPayload = new byte[200];
         random.nextBytes(firstPayload);
@@ -291,7 +298,7 @@ public class PerMessageDeflateDecoderTest {
 
         BinaryWebSocketFrame firstPart = new BinaryWebSocketFrame(false, WebSocketExtension.RSV1,
                                                                   compressedFirstPayload);
-        ContinuationWebSocketFrame finalPart = new ContinuationWebSocketFrame(true, WebSocketExtension.RSV1,
+        final ContinuationWebSocketFrame finalPart = new ContinuationWebSocketFrame(true, WebSocketExtension.RSV1,
                                                                               compressedFinalPayload);
         assertTrue(decoderChannel.writeInbound(firstPart));
 
@@ -303,11 +310,91 @@ public class PerMessageDeflateDecoderTest {
 
         //final part throwing exception
         try {
-            decoderChannel.writeInbound(finalPart);
+            assertThrows(DecoderException.class, new Executable() {
+                @Override
+                public void execute() {
+                    decoderChannel.writeInbound(finalPart);
+                }
+            });
         } finally {
             assertTrue(finalPart.release());
             assertFalse(encoderChannel.finishAndReleaseAll());
         }
     }
 
+    @Test
+    public void testEmptyFrameDecompression() {
+        EmbeddedChannel decoderChannel = new EmbeddedChannel(new PerMessageDeflateDecoder(false, 0));
+
+        TextWebSocketFrame emptyDeflateBlockFrame = new TextWebSocketFrame(true, WebSocketExtension.RSV1,
+                                                                           EMPTY_DEFLATE_BLOCK);
+
+        assertTrue(decoderChannel.writeInbound(emptyDeflateBlockFrame));
+        TextWebSocketFrame emptyBufferFrame = decoderChannel.readInbound();
+
+        assertFalse(emptyBufferFrame.content().isReadable());
+
+        // Composite empty buffer
+        assertTrue(emptyBufferFrame.release());
+        assertFalse(decoderChannel.finish());
+    }
+
+    @Test
+    public void testFragmentedFrameWithLeftOverInLastFragment() {
+        String hexDump = "677170647a777a737574656b707a787a6f6a7561756578756f6b7868616371716c657a6d64697479766d726f6" +
+                         "269746c6376777464776f6f72767a726f64667278676764687775786f6762766d776d706b76697773777a7072" +
+                         "6a6a737279707a7078697a6c69616d7461656d646278626d786f66666e686e776a7a7461746d7a776668776b6" +
+                         "f6f736e73746575637a6d727a7175707a6e74627578687871767771697a71766c64626d78726d6d7675756877" +
+                         "62667963626b687a726d676e646263776e67797264706d6c6863626577616967706a78636a72697464756e627" +
+                         "977616f79736475676f76736f7178746a7a7479626c64636b6b6778637768746c62";
+        EmbeddedChannel encoderChannel = new EmbeddedChannel(
+                ZlibCodecFactory.newZlibEncoder(ZlibWrapper.NONE, 9, 15, 8));
+        EmbeddedChannel decoderChannel = new EmbeddedChannel(new PerMessageDeflateDecoder(false, 0));
+
+        ByteBuf originPayload = Unpooled.wrappedBuffer(ByteBufUtil.decodeHexDump(hexDump));
+        assertTrue(encoderChannel.writeOutbound(originPayload.duplicate().retain()));
+
+        ByteBuf compressedPayload = encoderChannel.readOutbound();
+        compressedPayload = compressedPayload.slice(0, compressedPayload.readableBytes() - 4);
+
+        int oneThird = compressedPayload.readableBytes() / 3;
+
+        TextWebSocketFrame compressedFrame1 = new TextWebSocketFrame(
+                false, WebSocketExtension.RSV1, compressedPayload.slice(0, oneThird));
+        ContinuationWebSocketFrame compressedFrame2 = new ContinuationWebSocketFrame(
+                false, WebSocketExtension.RSV3, compressedPayload.slice(oneThird, oneThird));
+        ContinuationWebSocketFrame compressedFrame3 = new ContinuationWebSocketFrame(
+                false, WebSocketExtension.RSV3, compressedPayload.slice(oneThird * 2, oneThird));
+        int offset = oneThird * 3;
+        ContinuationWebSocketFrame compressedFrameWithExtraData = new ContinuationWebSocketFrame(
+                true, WebSocketExtension.RSV3, compressedPayload.slice(offset,
+                     compressedPayload.readableBytes() - offset));
+
+        // check that last fragment contains only one extra byte
+        assertEquals(1, compressedFrameWithExtraData.content().readableBytes());
+        assertEquals(1, compressedFrameWithExtraData.content().getByte(0));
+
+        // write compressed frames
+        assertTrue(decoderChannel.writeInbound(compressedFrame1.retain()));
+        assertTrue(decoderChannel.writeInbound(compressedFrame2.retain()));
+        assertTrue(decoderChannel.writeInbound(compressedFrame3.retain()));
+        assertTrue(decoderChannel.writeInbound(compressedFrameWithExtraData));
+
+        // read uncompressed frames
+        TextWebSocketFrame uncompressedFrame1 = decoderChannel.readInbound();
+        ContinuationWebSocketFrame uncompressedFrame2 = decoderChannel.readInbound();
+        ContinuationWebSocketFrame uncompressedFrame3 = decoderChannel.readInbound();
+        ContinuationWebSocketFrame uncompressedExtraData = decoderChannel.readInbound();
+        assertFalse(uncompressedExtraData.content().isReadable());
+
+        ByteBuf uncompressedPayload = Unpooled.wrappedBuffer(uncompressedFrame1.content(), uncompressedFrame2.content(),
+                                      uncompressedFrame3.content(), uncompressedExtraData.content());
+        assertEquals(originPayload, uncompressedPayload);
+
+        assertTrue(originPayload.release());
+        assertTrue(uncompressedPayload.release());
+
+        assertTrue(encoderChannel.finishAndReleaseAll());
+        assertFalse(decoderChannel.finish());
+    }
 }

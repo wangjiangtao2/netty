@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -21,7 +21,6 @@ import org.bouncycastle.cert.X509CertificateHolder;
 import org.bouncycastle.cert.X509v3CertificateBuilder;
 import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
 import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder;
-import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.operator.ContentSigner;
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
 
@@ -36,14 +35,32 @@ import java.util.Date;
 import static io.netty.handler.ssl.util.SelfSignedCertificate.newSelfSignedCertificate;
 
 /**
- * Generates a self-signed certificate using <a href="http://www.bouncycastle.org/">Bouncy Castle</a>.
+ * Generates a self-signed certificate using <a href="https://www.bouncycastle.org/">Bouncy Castle</a>.
  */
 final class BouncyCastleSelfSignedCertGenerator {
 
-    private static final Provider PROVIDER = new BouncyCastleProvider();
+    private static final Provider PROVIDER;
 
-    static String[] generate(String fqdn, KeyPair keypair, SecureRandom random, Date notBefore, Date notAfter)
-            throws Exception {
+    static {
+        Class<?> providerClass;
+        try {
+            providerClass = Class.forName("org.bouncycastle.jce.provider.BouncyCastleProvider");
+        } catch (ClassNotFoundException e) {
+            try {
+                providerClass = Class.forName("org.bouncycastle.jcajce.provider.BouncyCastleFipsProvider");
+            } catch (ClassNotFoundException ignore) {
+                throw new RuntimeException("Neither BouncyCastleProvider nor BouncyCastleFipsProvider found");
+            }
+        }
+        try {
+            PROVIDER = (Provider) providerClass.newInstance();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to instantiate BouncyCastle provider", e);
+        }
+    }
+
+    static String[] generate(String fqdn, KeyPair keypair, SecureRandom random, Date notBefore, Date notAfter,
+                             String algorithm) throws Exception {
         PrivateKey key = keypair.getPrivate();
 
         // Prepare the information required for generating an X.509 certificate.
@@ -51,7 +68,8 @@ final class BouncyCastleSelfSignedCertGenerator {
         X509v3CertificateBuilder builder = new JcaX509v3CertificateBuilder(
                 owner, new BigInteger(64, random), notBefore, notAfter, owner, keypair.getPublic());
 
-        ContentSigner signer = new JcaContentSignerBuilder("SHA256WithRSAEncryption").build(key);
+        ContentSigner signer = new JcaContentSignerBuilder(
+                algorithm.equalsIgnoreCase("EC") ? "SHA256withECDSA" : "SHA256WithRSAEncryption").build(key);
         X509CertificateHolder certHolder = builder.build(signer);
         X509Certificate cert = new JcaX509CertificateConverter().setProvider(PROVIDER).getCertificate(certHolder);
         cert.verify(keypair.getPublic());

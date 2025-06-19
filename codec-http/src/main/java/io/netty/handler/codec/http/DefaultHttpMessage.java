@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -29,16 +29,28 @@ public abstract class DefaultHttpMessage extends DefaultHttpObject implements Ht
      * Creates a new instance.
      */
     protected DefaultHttpMessage(final HttpVersion version) {
-        this(version, true, false);
+        this(version, DefaultHttpHeadersFactory.headersFactory());
+    }
+
+    /**
+     * Creates a new instance.
+     * <p>
+     * @deprecated Use the {@link #DefaultHttpMessage(HttpVersion, HttpHeadersFactory)} constructor instead,
+     * ideally using the {@link DefaultHttpHeadersFactory#headersFactory()},
+     * or a factory that otherwise has validation enabled.
+     */
+    @Deprecated
+    protected DefaultHttpMessage(final HttpVersion version, boolean validateHeaders, boolean singleFieldHeaders) {
+        this(version, DefaultHttpHeadersFactory.headersFactory()
+                .withValidation(validateHeaders)
+                .withCombiningHeaders(singleFieldHeaders));
     }
 
     /**
      * Creates a new instance.
      */
-    protected DefaultHttpMessage(final HttpVersion version, boolean validateHeaders, boolean singleFieldHeaders) {
-        this(version,
-                singleFieldHeaders ? new CombinedHttpHeaders(validateHeaders)
-                                   : new DefaultHttpHeaders(validateHeaders));
+    protected DefaultHttpMessage(HttpVersion version, HttpHeadersFactory headersFactory) {
+        this(version, headersFactory.newHeaders());
     }
 
     /**
@@ -89,10 +101,7 @@ public abstract class DefaultHttpMessage extends DefaultHttpObject implements Ht
 
     @Override
     public HttpMessage setProtocolVersion(HttpVersion version) {
-        if (version == null) {
-            throw new NullPointerException("version");
-        }
-        this.version = version;
+        this.version = checkNotNull(version, "version");
         return this;
     }
 }

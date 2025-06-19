@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -17,15 +17,20 @@ package io.netty.handler.codec.http;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufHolder;
+import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.handler.codec.DecoderResult;
 import io.netty.handler.codec.MessageToMessageCodec;
 import io.netty.util.ReferenceCountUtil;
+import io.netty.util.internal.ObjectUtil;
+import io.netty.util.internal.StringUtil;
 
 import java.util.ArrayDeque;
 import java.util.List;
 import java.util.Queue;
+
+import static io.netty.handler.codec.http.HttpHeaderNames.*;
 
 /**
  * Encodes the content of the outbound {@link HttpResponse} and {@link HttpContent}.
@@ -59,7 +64,6 @@ public abstract class HttpContentEncoder extends MessageToMessageCodec<HttpReque
 
     private static final CharSequence ZERO_LENGTH_HEAD = "HEAD";
     private static final CharSequence ZERO_LENGTH_CONNECT = "CONNECT";
-    private static final int CONTINUE_CODE = HttpResponseStatus.CONTINUE.code();
 
     private final Queue<CharSequence> acceptEncodingQueue = new ArrayDeque<CharSequence>();
     private EmbeddedChannel encoder;
@@ -71,21 +75,30 @@ public abstract class HttpContentEncoder extends MessageToMessageCodec<HttpReque
     }
 
     @Override
-    protected void decode(ChannelHandlerContext ctx, HttpRequest msg, List<Object> out)
-            throws Exception {
-        CharSequence acceptedEncoding = msg.headers().get(HttpHeaderNames.ACCEPT_ENCODING);
-        if (acceptedEncoding == null) {
-            acceptedEncoding = HttpContentDecoder.IDENTITY;
+    protected void decode(ChannelHandlerContext ctx, HttpRequest msg, List<Object> out) throws Exception {
+        CharSequence acceptEncoding;
+        List<String> acceptEncodingHeaders = msg.headers().getAll(ACCEPT_ENCODING);
+        switch (acceptEncodingHeaders.size()) {
+        case 0:
+            acceptEncoding = HttpContentDecoder.IDENTITY;
+            break;
+        case 1:
+            acceptEncoding = acceptEncodingHeaders.get(0);
+            break;
+        default:
+            // Multiple message-header fields https://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html#sec4.2
+            acceptEncoding = StringUtil.join(",", acceptEncodingHeaders);
+            break;
         }
 
         HttpMethod method = msg.method();
         if (HttpMethod.HEAD.equals(method)) {
-            acceptedEncoding = ZERO_LENGTH_HEAD;
+            acceptEncoding = ZERO_LENGTH_HEAD;
         } else if (HttpMethod.CONNECT.equals(method)) {
-            acceptedEncoding = ZERO_LENGTH_CONNECT;
+            acceptEncoding = ZERO_LENGTH_CONNECT;
         }
 
-        acceptEncodingQueue.add(acceptedEncoding);
+        acceptEncodingQueue.add(acceptEncoding);
         out.add(ReferenceCountUtil.retain(msg));
     }
 
@@ -99,10 +112,12 @@ public abstract class HttpContentEncoder extends MessageToMessageCodec<HttpReque
 
                 final HttpResponse res = (HttpResponse) msg;
                 final int code = res.status().code();
+                final HttpStatusClass codeClass = res.status().codeClass();
                 final CharSequence acceptEncoding;
-                if (code == CONTINUE_CODE) {
-                    // We need to not poll the encoding when response with CONTINUE as another response will follow
-                    // for the issued request. See https://github.com/netty/netty/issues/4079
+                if (codeClass == HttpStatusClass.INFORMATIONAL) {
+                    // We need to not poll the encoding when response with 1xx codes as another response will follow
+                    // for the issued request.
+                    // See https://github.com/netty/netty/issues/12904 and https://github.com/netty/netty/issues/4079
                     acceptEncoding = null;
                 } else {
                     // Get the list of encodings accepted by the peer.
@@ -129,7 +144,7 @@ public abstract class HttpContentEncoder extends MessageToMessageCodec<HttpReque
                     if (isFull) {
                         out.add(ReferenceCountUtil.retain(res));
                     } else {
-                        out.add(res);
+                        out.add(ReferenceCountUtil.retain(res));
                         // Pass through all following contents.
                         state = State.PASS_THROUGH;
                     }
@@ -152,7 +167,7 @@ public abstract class HttpContentEncoder extends MessageToMessageCodec<HttpReque
                     if (isFull) {
                         out.add(ReferenceCountUtil.retain(res));
                     } else {
-                        out.add(res);
+                        out.add(ReferenceCountUtil.retain(res));
                         // Pass through all following contents.
                         state = State.PASS_THROUGH;
                     }
@@ -180,7 +195,7 @@ public abstract class HttpContentEncoder extends MessageToMessageCodec<HttpReque
                     res.headers().remove(HttpHeaderNames.CONTENT_LENGTH);
                     res.headers().set(HttpHeaderNames.TRANSFER_ENCODING, HttpHeaderValues.CHUNKED);
 
-                    out.add(res);
+                    out.add(ReferenceCountUtil.retain(res));
                     state = State.AWAIT_CONTENT;
                     if (!(msg instanceof HttpContent)) {
                         // only break out the switch statement if we have not content to process
@@ -194,6 +209,9 @@ public abstract class HttpContentEncoder extends MessageToMessageCodec<HttpReque
                 ensureContent(msg);
                 if (encodeContent((HttpContent) msg, out)) {
                     state = State.AWAIT_HEADERS;
+                } else if (out.isEmpty()) {
+                    // MessageToMessageCodec needs at least one output message
+                    out.add(new DefaultHttpContent(Unpooled.EMPTY_BUFFER));
                 }
                 break;
             }
@@ -275,8 +293,8 @@ public abstract class HttpContentEncoder extends MessageToMessageCodec<HttpReque
     /**
      * Prepare to encode the HTTP message content.
      *
-     * @param headers
-     *        the headers
+     * @param httpResponse
+     *        the http response
      * @param acceptEncoding
      *        the value of the {@code "Accept-Encoding"} header
      *
@@ -286,7 +304,7 @@ public abstract class HttpContentEncoder extends MessageToMessageCodec<HttpReque
      *         {@code null} if {@code acceptEncoding} is unsupported or rejected
      *         and thus the content should be handled as-is (i.e. no encoding).
      */
-    protected abstract Result beginEncode(HttpResponse headers, String acceptEncoding) throws Exception;
+    protected abstract Result beginEncode(HttpResponse httpResponse, String acceptEncoding) throws Exception;
 
     @Override
     public void handlerRemoved(ChannelHandlerContext ctx) throws Exception {
@@ -350,15 +368,8 @@ public abstract class HttpContentEncoder extends MessageToMessageCodec<HttpReque
         private final EmbeddedChannel contentEncoder;
 
         public Result(String targetContentEncoding, EmbeddedChannel contentEncoder) {
-            if (targetContentEncoding == null) {
-                throw new NullPointerException("targetContentEncoding");
-            }
-            if (contentEncoder == null) {
-                throw new NullPointerException("contentEncoder");
-            }
-
-            this.targetContentEncoding = targetContentEncoding;
-            this.contentEncoder = contentEncoder;
+            this.targetContentEncoding = ObjectUtil.checkNotNull(targetContentEncoding, "targetContentEncoding");
+            this.contentEncoder = ObjectUtil.checkNotNull(contentEncoder, "contentEncoder");
         }
 
         public String targetContentEncoding() {

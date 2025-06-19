@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -15,6 +15,7 @@
  */
 package io.netty.microbench.buffer;
 
+import io.netty.buffer.AdaptiveByteBufAllocator;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.PooledByteBufAllocator;
@@ -24,7 +25,10 @@ import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.Param;
 import org.openjdk.jmh.annotations.Scope;
 import org.openjdk.jmh.annotations.State;
+import org.openjdk.jmh.annotations.TearDown;
 
+import java.util.Arrays;
+import java.util.List;
 import java.util.Random;
 
 /**
@@ -35,7 +39,8 @@ public class ByteBufAllocatorBenchmark extends AbstractMicrobenchmark {
 
     private static final ByteBufAllocator unpooledAllocator = new UnpooledByteBufAllocator(true);
     private static final ByteBufAllocator pooledAllocator =
-            new PooledByteBufAllocator(true, 4, 4, 8192, 11, 0, 0, 0, true, 0); // Disable thread-local cache
+            new PooledByteBufAllocator(true, 4, 4, 8192, 11, 0, 0, 0, true, 0);
+    private static final ByteBufAllocator adaptiveAllocator = new AdaptiveByteBufAllocator();
 
     private static final int MAX_LIVE_BUFFERS = 8192;
     private static final Random rand = new Random();
@@ -45,9 +50,39 @@ public class ByteBufAllocatorBenchmark extends AbstractMicrobenchmark {
     private static final ByteBuf[] pooledDirectBuffers = new ByteBuf[MAX_LIVE_BUFFERS];
     private static final ByteBuf[] defaultPooledHeapBuffers = new ByteBuf[MAX_LIVE_BUFFERS];
     private static final ByteBuf[] defaultPooledDirectBuffers = new ByteBuf[MAX_LIVE_BUFFERS];
+    private static final ByteBuf[] adaptiveHeapBuffers = new ByteBuf[MAX_LIVE_BUFFERS];
+    private static final ByteBuf[] adaptiveDirectBuffers = new ByteBuf[MAX_LIVE_BUFFERS];
 
-    @Param({ "00000", "00256", "01024", "04096", "16384", "65536" })
+    @Param({
+            "00000",
+            "00256",
+            "01024",
+            "04096",
+            "16384",
+            "65536",
+    })
     public int size;
+
+    @TearDown
+    public void releaseBuffers() {
+        List<ByteBuf[]> bufferLists = Arrays.asList(
+                unpooledHeapBuffers,
+                unpooledDirectBuffers,
+                pooledHeapBuffers,
+                pooledDirectBuffers,
+                defaultPooledHeapBuffers,
+                defaultPooledDirectBuffers,
+                adaptiveHeapBuffers,
+                adaptiveDirectBuffers);
+        for (ByteBuf[] bufs : bufferLists) {
+            for (ByteBuf buf : bufs) {
+                if (buf != null && buf.refCnt() > 0) {
+                    buf.release();
+                }
+            }
+            Arrays.fill(bufs, null);
+        }
+    }
 
     @Benchmark
     public void unpooledHeapAllocAndFree() {
@@ -107,5 +142,25 @@ public class ByteBufAllocatorBenchmark extends AbstractMicrobenchmark {
             oldBuf.release();
         }
         defaultPooledDirectBuffers[idx] = PooledByteBufAllocator.DEFAULT.directBuffer(size);
+    }
+
+    @Benchmark
+    public void adaptiveHeapAllocAndFree() {
+        int idx = rand.nextInt(adaptiveHeapBuffers.length);
+        ByteBuf oldBuf = adaptiveHeapBuffers[idx];
+        if (oldBuf != null) {
+            oldBuf.release();
+        }
+        adaptiveHeapBuffers[idx] = adaptiveAllocator.heapBuffer(size);
+    }
+
+    @Benchmark
+    public void adaptiveDirectAllocAndFree() {
+        int idx = rand.nextInt(adaptiveDirectBuffers.length);
+        ByteBuf oldBuf = adaptiveDirectBuffers[idx];
+        if (oldBuf != null) {
+            oldBuf.release();
+        }
+        adaptiveDirectBuffers[idx] = adaptiveAllocator.directBuffer(size);
     }
 }

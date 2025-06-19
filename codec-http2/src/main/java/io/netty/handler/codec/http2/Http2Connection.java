@@ -5,7 +5,7 @@
  * "License"); you may not use this file except in compliance with the License. You may obtain a
  * copy of the License at:
  *
- * http://www.apache.org/licenses/LICENSE-2.0
+ * https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software distributed under the License
  * is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
@@ -18,12 +18,10 @@ package io.netty.handler.codec.http2;
 import io.netty.buffer.ByteBuf;
 import io.netty.util.concurrent.Future;
 import io.netty.util.concurrent.Promise;
-import io.netty.util.internal.UnstableApi;
 
 /**
  * Manager for the state of an HTTP/2 connection with the remote end-point.
  */
-@UnstableApi
 public interface Http2Connection {
     /**
      * Listener for life-cycle events for streams in this connection.
@@ -89,7 +87,7 @@ public interface Http2Connection {
 
         /**
          * Called when a {@code GOAWAY} was received from the remote endpoint. This event handler duplicates {@link
-         * Http2FrameListener#onGoAwayRead(io.netty.channel.ChannelHandlerContext, int, long, io.netty.buffer.ByteBuf)}
+         * Http2FrameListener#onGoAwayRead(io.netty.channel.ChannelHandlerContext, int, long, ByteBuf)}
          * but is added here in order to simplify application logic for handling {@code GOAWAY} in a uniform way. An
          * application should generally not handle both events, but if it does this method is called second, after
          * notifying the {@link Http2FrameListener}.

@@ -5,7 +5,7 @@
  * "License"); you may not use this file except in compliance with the License. You may obtain a
  * copy of the License at:
  *
- * http://www.apache.org/licenses/LICENSE-2.0
+ * https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software distributed under the License
  * is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
@@ -23,7 +23,6 @@ import io.netty.util.internal.MathUtil;
 import io.netty.util.internal.PriorityQueue;
 import io.netty.util.internal.PriorityQueueNode;
 import io.netty.util.internal.SystemPropertyUtil;
-import io.netty.util.internal.UnstableApi;
 
 import java.io.Serializable;
 import java.util.ArrayList;
@@ -56,7 +55,6 @@ import static java.lang.Math.min;
  * Each write operation will use the {@link #allocationQuantum(int)} to know how many more bytes should be allocated
  * relative to the next stream which wants to write. This is to balance fairness while also considering goodput.
  */
-@UnstableApi
 public final class WeightedFairQueueByteDistributor implements StreamByteDistributor {
     /**
      * The initial size of the children map is chosen to be conservative on initial memory allocations under
@@ -234,7 +232,7 @@ public final class WeightedFairQueueByteDistributor implements StreamByteDistrib
         }
         state.weight = weight;
 
-        if (newParent != state.parent || (exclusive && newParent.children.size() != 1)) {
+        if (newParent != state.parent || exclusive && newParent.children.size() != 1) {
             final List<ParentChangedEvent> events;
             if (newParent.isDescendantOf(state)) {
                 events = new ArrayList<ParentChangedEvent>(2 + (exclusive ? newParent.children.size() : 0));
@@ -321,7 +319,7 @@ public final class WeightedFairQueueByteDistributor implements StreamByteDistrib
         try {
             assert nextChildState == null || nextChildState.pseudoTimeToWrite >= childState.pseudoTimeToWrite :
                 "nextChildState[" + nextChildState.streamId + "].pseudoTime(" + nextChildState.pseudoTimeToWrite +
-                ") < " + " childState[" + childState.streamId + "].pseudoTime(" + childState.pseudoTimeToWrite + ")";
+                ") < " + " childState[" + childState.streamId + "].pseudoTime(" + childState.pseudoTimeToWrite + ')';
             int nsent = distribute(nextChildState == null ? maxBytes :
                             min(maxBytes, (int) min((nextChildState.pseudoTimeToWrite - childState.pseudoTimeToWrite) *
                                                childState.weight / oldTotalQueuedWeights + allocationQuantum, MAX_VALUE)
@@ -397,9 +395,6 @@ public final class WeightedFairQueueByteDistributor implements StreamByteDistrib
 
         static final StateOnlyComparator INSTANCE = new StateOnlyComparator();
 
-        private StateOnlyComparator() {
-        }
-
         @Override
         public int compare(State o1, State o2) {
             // "priority only streams" (which have not been activated) are higher priority than streams used for data.
@@ -425,9 +420,6 @@ public final class WeightedFairQueueByteDistributor implements StreamByteDistrib
         private static final long serialVersionUID = -1437548640227161828L;
 
         static final StatePseudoTimeComparator INSTANCE = new StatePseudoTimeComparator();
-
-        private StatePseudoTimeComparator() {
-        }
 
         @Override
         public int compare(State o1, State o2) {
@@ -550,14 +542,28 @@ public final class WeightedFairQueueByteDistributor implements StreamByteDistrib
                 events.add(new ParentChangedEvent(child, child.parent));
                 child.setParent(null);
 
-                // Move up any grand children to be directly dependent on this node.
-                Iterator<IntObjectMap.PrimitiveEntry<State>> itr = child.children.entries().iterator();
-                while (itr.hasNext()) {
-                    takeChild(itr, itr.next().value(), false, events);
+                if (!child.children.isEmpty()) {
+                    // Move up any grand children to be directly dependent on this node.
+                    Iterator<IntObjectMap.PrimitiveEntry<State>> itr = child.children.entries().iterator();
+                    long totalWeight = child.getTotalWeight();
+                    do {
+                        // Redistribute the weight of child to its dependency proportionally.
+                        State dependency = itr.next().value();
+                        dependency.weight = (short) max(1, dependency.weight * child.weight / totalWeight);
+                        takeChild(itr, dependency, false, events);
+                    } while (itr.hasNext());
                 }
 
                 notifyParentChanged(events);
             }
+        }
+
+        private long getTotalWeight() {
+            long totalWeight = 0L;
+            for (State state : children.values()) {
+                totalWeight += state.weight;
+            }
+            return totalWeight;
         }
 
         /**

@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -58,10 +58,19 @@ public class PooledByteBufAllocatorAlignBenchmark extends
      */
     private static final int BLOCK = 4;
 
-    @Param({ "0", "64" })
+    @Param({
+            "0",
+            "64",
+    })
     private int cacheAlign;
 
-    @Param({ "01024", "04096", "16384", "65536", "1048576" })
+    @Param({
+            "01024",
+            "04096",
+            "16384",
+            "65536",
+            "1048576",
+    })
     private int size;
 
     private ByteBuf pooledDirectBuffer;

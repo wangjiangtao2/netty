@@ -5,7 +5,7 @@
  * "License"); you may not use this file except in compliance with the License. You may obtain a
  * copy of the License at:
  *
- * http://www.apache.org/licenses/LICENSE-2.0
+ * https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software distributed under the License
  * is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
@@ -15,7 +15,9 @@
 package io.netty.handler.codec;
 
 import io.netty.util.AsciiString;
-import org.junit.Test;
+import io.netty.util.HashingStrategy;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.function.Executable;
 
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -26,13 +28,15 @@ import java.util.NoSuchElementException;
 
 import static io.netty.util.AsciiString.of;
 import static java.util.Arrays.asList;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotEquals;
-import static org.junit.Assert.assertNotSame;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * Tests for {@link DefaultHeaders}.
@@ -47,6 +51,10 @@ public class DefaultHeadersTest {
 
         TestDefaultHeaders(ValueConverter<CharSequence> converter) {
             super(converter);
+        }
+
+        TestDefaultHeaders(HashingStrategy<CharSequence> nameHashingStrategy) {
+            super(nameHashingStrategy, CharSequenceValueConverter.INSTANCE);
         }
     }
 
@@ -110,20 +118,89 @@ public class DefaultHeadersTest {
     }
 
     @Test
+    public void multipleValuesPerNameIteratorWithOtherNames() {
+        TestDefaultHeaders headers = newInstance();
+        headers.add(of("name1"), of("value1"));
+        headers.add(of("name1"), of("value2"));
+        headers.add(of("name2"), of("value4"));
+        headers.add(of("name1"), of("value3"));
+        assertEquals(4, headers.size());
+
+        List<CharSequence> values = new ArrayList<CharSequence>();
+        Iterator<CharSequence> itr = headers.valueIterator(of("name1"));
+        while (itr.hasNext()) {
+            values.add(itr.next());
+            itr.remove();
+        }
+        assertEquals(3, values.size());
+        assertEquals(1, headers.size());
+        assertFalse(headers.isEmpty());
+        assertTrue(values.containsAll(asList(of("value1"), of("value2"), of("value3"))));
+        itr = headers.valueIterator(of("name1"));
+        assertFalse(itr.hasNext());
+        itr = headers.valueIterator(of("name2"));
+        assertTrue(itr.hasNext());
+        assertEquals(of("value4"), itr.next());
+        assertFalse(itr.hasNext());
+    }
+
+    @Test
     public void multipleValuesPerNameIterator() {
         TestDefaultHeaders headers = newInstance();
+        headers.add(of("name1"), of("value1"));
+        headers.add(of("name1"), of("value2"));
+        assertEquals(2, headers.size());
+
+        List<CharSequence> values = new ArrayList<CharSequence>();
+        Iterator<CharSequence> itr = headers.valueIterator(of("name1"));
+        while (itr.hasNext()) {
+            values.add(itr.next());
+            itr.remove();
+        }
+        assertEquals(2, values.size());
+        assertEquals(0, headers.size());
+        assertTrue(headers.isEmpty());
+        assertTrue(values.containsAll(asList(of("value1"), of("value2"))));
+        itr = headers.valueIterator(of("name1"));
+        assertFalse(itr.hasNext());
+    }
+
+    @Test
+    public void valuesItrRemoveThrowsWhenEmpty() {
+        TestDefaultHeaders headers = newInstance();
+        assertEquals(0, headers.size());
+        assertTrue(headers.isEmpty());
+        final Iterator<CharSequence> itr = headers.valueIterator(of("name"));
+        assertThrows(IllegalStateException.class, new Executable() {
+            @Override
+            public void execute() {
+                itr.remove();
+            }
+        });
+    }
+
+    @Test
+    public void valuesItrRemoveThrowsAfterLastElement() {
+        TestDefaultHeaders headers = newInstance();
         headers.add(of("name"), of("value1"));
-        headers.add(of("name"), of("value2"));
-        headers.add(of("name"), of("value3"));
-        assertEquals(3, headers.size());
+        assertEquals(1, headers.size());
 
         List<CharSequence> values = new ArrayList<CharSequence>();
         Iterator<CharSequence> itr = headers.valueIterator(of("name"));
         while (itr.hasNext()) {
             values.add(itr.next());
+            itr.remove();
         }
-        assertEquals(3, values.size());
-        assertTrue(values.containsAll(asList(of("value1"), of("value2"), of("value3"))));
+        assertEquals(1, values.size());
+        assertEquals(0, headers.size());
+        assertTrue(headers.isEmpty());
+        assertTrue(values.contains(of("value1")));
+        try {
+            itr.remove();
+            fail();
+        } catch (IllegalStateException ignored) {
+            // ignored
+        }
     }
 
     @Test
@@ -390,11 +467,16 @@ public class DefaultHeadersTest {
         assertEquals(h2, h2);
     }
 
-    @Test(expected = NoSuchElementException.class)
+    @Test
     public void iterateEmptyHeadersShouldThrow() {
-        Iterator<Map.Entry<CharSequence, CharSequence>> iterator = newInstance().iterator();
+        final Iterator<Map.Entry<CharSequence, CharSequence>> iterator = newInstance().iterator();
         assertFalse(iterator.hasNext());
-        iterator.next();
+        assertThrows(NoSuchElementException.class, new Executable() {
+            @Override
+            public void execute() {
+                iterator.next();
+            }
+        });
     }
 
     @Test
@@ -497,10 +579,15 @@ public class DefaultHeadersTest {
         assertEquals(headers1, expected);
     }
 
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void testAddSelf() {
-        TestDefaultHeaders headers = newInstance();
-        headers.add(headers);
+        final TestDefaultHeaders headers = newInstance();
+        assertThrows(IllegalArgumentException.class, new Executable() {
+            @Override
+            public void execute() {
+                headers.add(headers);
+            }
+        });
     }
 
     @Test
@@ -694,5 +781,51 @@ public class DefaultHeadersTest {
         assertTrue(headers.getBoolean("name1", false));
         assertTrue(headers.getBoolean("name2", false));
         assertTrue(headers.getBoolean("name3", false));
+    }
+
+    @Test
+    public void handlingOfHeaderNameHashCollisions() {
+        TestDefaultHeaders headers = new TestDefaultHeaders(new HashingStrategy<CharSequence>() {
+            @Override
+            public int hashCode(CharSequence obj) {
+                return 0; // Degenerate hashing strategy to enforce collisions.
+            }
+
+            @Override
+            public boolean equals(CharSequence a, CharSequence b) {
+                return a.equals(b);
+            }
+        });
+
+        headers.add("Cookie", "a=b; c=d; e=f");
+        headers.add("other", "text/plain");  // Add another header which will be saved in the same entries[index]
+
+        simulateCookieSplitting(headers);
+        List<CharSequence> cookies = headers.getAll("Cookie");
+
+        assertEquals(3, cookies.size());
+        assertThat(cookies).contains((CharSequence) "a=b", "c=d", "e=f");
+    }
+
+    /**
+     * Split up cookies into individual cookie crumb headers.
+     */
+    static void simulateCookieSplitting(TestDefaultHeaders headers) {
+        Iterator<CharSequence> cookieItr = headers.valueIterator("Cookie");
+        if (!cookieItr.hasNext()) {
+            return;
+        }
+        // We want to avoid "concurrent modifications" of the headers while we are iterating. So we insert crumbs
+        // into an intermediate collection and insert them after the split process concludes.
+        List<CharSequence> cookiesToAdd = new ArrayList<CharSequence>();
+        while (cookieItr.hasNext()) {
+            //noinspection DynamicRegexReplaceableByCompiledPattern
+            String[] cookies = cookieItr.next().toString().split("; ");
+            cookiesToAdd.addAll(asList(cookies));
+            cookieItr.remove();
+        }
+        for (CharSequence crumb : cookiesToAdd) {
+            headers.add("Cookie", crumb);
+        }
     }
 }

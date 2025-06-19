@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -28,6 +28,10 @@ import io.netty.handler.codec.socksx.v4.Socks4CommandType;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 
+/**
+ * Handler that establishes a blind forwarding proxy tunnel using
+ * <a href="https://www.openssh.com/txt/socks4.protocol">SOCKS4</a> protocol.
+ */
 public final class Socks4ProxyHandler extends ProxyHandler {
 
     private static final String PROTOCOL = "socks4";

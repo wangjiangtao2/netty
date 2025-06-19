@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -38,9 +38,8 @@ import io.netty.util.internal.SocketUtils;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 
-import static org.hamcrest.CoreMatchers.is;
-import static org.hamcrest.Matchers.*;
-import static org.junit.Assert.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 final class HttpProxyServer extends ProxyServer {
 
@@ -74,7 +73,7 @@ final class HttpProxyServer extends ProxyServer {
     }
 
     private boolean authenticate(ChannelHandlerContext ctx, FullHttpRequest req) {
-        assertThat(req.method(), is(HttpMethod.CONNECT));
+        assertEquals(HttpMethod.CONNECT, req.method());
 
         if (testMode != TestMode.INTERMEDIARY) {
             ctx.pipeline().addBefore(ctx.name(), "lineDecoder", new LineBasedFrameDecoder(64, false, true));
@@ -120,7 +119,7 @@ final class HttpProxyServer extends ProxyServer {
                 res = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
                 String uri = req.uri();
                 int lastColonPos = uri.lastIndexOf(':');
-                assertThat(lastColonPos, is(greaterThan(0)));
+                assertThat(lastColonPos).isGreaterThan(0);
                 intermediaryDestination = SocketUtils.socketAddress(
                         uri.substring(0, lastColonPos), Integer.parseInt(uri.substring(lastColonPos + 1)));
             }

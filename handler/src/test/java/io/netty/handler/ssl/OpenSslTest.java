@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -15,16 +15,35 @@
  */
 package io.netty.handler.ssl;
 
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-public class OpenSslTest {
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+final class OpenSslTest {
 
     @Test
-    public void testDefaultCiphers() {
+    void testDefaultCiphers() {
         if (!OpenSsl.isTlsv13Supported()) {
-            Assert.assertTrue(
+            assertTrue(
                     OpenSsl.DEFAULT_CIPHERS.size() <= SslUtils.DEFAULT_CIPHER_SUITES.length);
+        }
+    }
+
+    @Test
+    void availableJavaCipherSuitesMustNotContainNullOrEmptyElement() {
+        for (String suite :OpenSsl.availableJavaCipherSuites()) {
+            assertNotNull(suite);
+            assertFalse(suite.isEmpty());
+        }
+    }
+
+    @Test
+    void availableOpenSslCipherSuitesMustNotContainNullOrEmptyElement() {
+        for (String suite :OpenSsl.availableOpenSslCipherSuites()) {
+            assertNotNull(suite);
+            assertFalse(suite.isEmpty());
         }
     }
 }

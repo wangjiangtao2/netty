@@ -5,7 +5,7 @@
  * "License"); you may not use this file except in compliance with the License. You may obtain a
  * copy of the License at:
  *
- * http://www.apache.org/licenses/LICENSE-2.0
+ * https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software distributed under the License
  * is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
@@ -19,43 +19,101 @@ import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.handler.codec.ByteToMessageDecoder;
+import io.netty.handler.codec.compression.Brotli;
+import io.netty.handler.codec.compression.BrotliDecoder;
+import io.netty.handler.codec.compression.Zstd;
+import io.netty.handler.codec.compression.ZstdDecoder;
 import io.netty.handler.codec.compression.ZlibCodecFactory;
 import io.netty.handler.codec.compression.ZlibWrapper;
-import io.netty.util.internal.UnstableApi;
+import io.netty.handler.codec.compression.SnappyFrameDecoder;
 
 import static io.netty.handler.codec.http.HttpHeaderNames.CONTENT_ENCODING;
 import static io.netty.handler.codec.http.HttpHeaderNames.CONTENT_LENGTH;
+import static io.netty.handler.codec.http.HttpHeaderValues.BR;
 import static io.netty.handler.codec.http.HttpHeaderValues.DEFLATE;
 import static io.netty.handler.codec.http.HttpHeaderValues.GZIP;
 import static io.netty.handler.codec.http.HttpHeaderValues.IDENTITY;
 import static io.netty.handler.codec.http.HttpHeaderValues.X_DEFLATE;
 import static io.netty.handler.codec.http.HttpHeaderValues.X_GZIP;
+import static io.netty.handler.codec.http.HttpHeaderValues.SNAPPY;
+import static io.netty.handler.codec.http.HttpHeaderValues.ZSTD;
 import static io.netty.handler.codec.http2.Http2Error.INTERNAL_ERROR;
 import static io.netty.handler.codec.http2.Http2Exception.streamError;
 import static io.netty.util.internal.ObjectUtil.checkNotNull;
 import static io.netty.util.internal.ObjectUtil.checkPositiveOrZero;
 
 /**
- * A HTTP2 frame listener that will decompress data frames according to the {@code content-encoding} header for each
+ * An HTTP2 frame listener that will decompress data frames according to the {@code content-encoding} header for each
  * stream. The decompression provided by this class will be applied to the data for the entire stream.
  */
-@UnstableApi
 public class DelegatingDecompressorFrameListener extends Http2FrameListenerDecorator {
 
     private final Http2Connection connection;
     private final boolean strict;
     private boolean flowControllerInitialized;
     private final Http2Connection.PropertyKey propertyKey;
+    private final int maxAllocation;
 
+    /**
+     * Create a new instance.
+     *
+     * @param connection the connection to read data which should be decompressed
+     * @param listener the delegate listener used by {@link Http2FrameListenerDecorator}
+     * @deprecated
+     *      Use {@link DelegatingDecompressorFrameListener#DelegatingDecompressorFrameListener(Http2Connection,
+     *      Http2FrameListener, int)}
+     */
+    @Deprecated
     public DelegatingDecompressorFrameListener(Http2Connection connection, Http2FrameListener listener) {
-        this(connection, listener, true);
+        this(connection, listener, 0);
     }
 
+    /**
+     * Create a new instance.
+     *
+     * @param connection the connection to read data which should be decompressed
+     * @param listener the delegate listener used by {@link Http2FrameListenerDecorator}
+     * @param maxAllocation maximum size of the decompression buffer. Must be &gt;= 0.
+     *                      If zero, maximum size is not limited by decoder.
+     */
     public DelegatingDecompressorFrameListener(Http2Connection connection, Http2FrameListener listener,
-                    boolean strict) {
+                                               int maxAllocation) {
+        this(connection, listener, true, maxAllocation);
+    }
+
+    /**
+     * Create a new instance.
+     *
+     * @param connection the connection to read data which should be decompressed
+     * @param listener the delegate listener used by {@link Http2FrameListenerDecorator}
+     * @param strict if `true`, {@link ZlibWrapper#ZLIB} will be used for the decoder,
+     *               otherwise the decoder can fallback to {@link ZlibWrapper#NONE}
+     * @deprecated
+     *      Use {@link DelegatingDecompressorFrameListener#DelegatingDecompressorFrameListener(Http2Connection,
+     *      Http2FrameListener, boolean, int)}
+     */
+    @Deprecated
+    public DelegatingDecompressorFrameListener(Http2Connection connection, Http2FrameListener listener,
+                                               boolean strict) {
+        this(connection, listener, strict, 0);
+    }
+
+    /**
+     * Create a new instance.
+     *
+     * @param connection the connection to read data which should be decompressed
+     * @param listener the delegate listener used by {@link Http2FrameListenerDecorator}
+     * @param strict if `true`, {@link ZlibWrapper#ZLIB} will be used for the decoder,
+     *               otherwise the decoder can fallback to {@link ZlibWrapper#NONE}
+     * @param maxAllocation maximum size of the decompression buffer. Must be &gt;= 0.
+     *                      If zero, maximum size is not limited by decoder.
+     */
+    public DelegatingDecompressorFrameListener(Http2Connection connection, Http2FrameListener listener,
+                    boolean strict, int maxAllocation) {
         super(listener);
         this.connection = connection;
         this.strict = strict;
+        this.maxAllocation = checkPositiveOrZero(maxAllocation, "maxAllocation");
 
         propertyKey = connection.newKey();
         connection.addListener(new Http2ConnectionAdapter() {
@@ -161,19 +219,31 @@ public class DelegatingDecompressorFrameListener extends Http2FrameListenerDecor
      * @param contentEncoding the value of the {@code content-encoding} header
      * @return a new {@link ByteToMessageDecoder} if the specified encoding is supported. {@code null} otherwise
      *         (alternatively, you can throw a {@link Http2Exception} to block unknown encoding).
-     * @throws Http2Exception If the specified encoding is not not supported and warrants an exception
+     * @throws Http2Exception If the specified encoding is not supported and warrants an exception
      */
     protected EmbeddedChannel newContentDecompressor(final ChannelHandlerContext ctx, CharSequence contentEncoding)
             throws Http2Exception {
         if (GZIP.contentEqualsIgnoreCase(contentEncoding) || X_GZIP.contentEqualsIgnoreCase(contentEncoding)) {
             return new EmbeddedChannel(ctx.channel().id(), ctx.channel().metadata().hasDisconnect(),
-                    ctx.channel().config(), ZlibCodecFactory.newZlibDecoder(ZlibWrapper.GZIP));
+                    ctx.channel().config(), ZlibCodecFactory.newZlibDecoder(ZlibWrapper.GZIP, maxAllocation));
         }
         if (DEFLATE.contentEqualsIgnoreCase(contentEncoding) || X_DEFLATE.contentEqualsIgnoreCase(contentEncoding)) {
             final ZlibWrapper wrapper = strict ? ZlibWrapper.ZLIB : ZlibWrapper.ZLIB_OR_NONE;
             // To be strict, 'deflate' means ZLIB, but some servers were not implemented correctly.
             return new EmbeddedChannel(ctx.channel().id(), ctx.channel().metadata().hasDisconnect(),
-                    ctx.channel().config(), ZlibCodecFactory.newZlibDecoder(wrapper));
+                    ctx.channel().config(), ZlibCodecFactory.newZlibDecoder(wrapper, maxAllocation));
+        }
+        if (Brotli.isAvailable() && BR.contentEqualsIgnoreCase(contentEncoding)) {
+            return new EmbeddedChannel(ctx.channel().id(), ctx.channel().metadata().hasDisconnect(),
+              ctx.channel().config(), new BrotliDecoder());
+        }
+        if (SNAPPY.contentEqualsIgnoreCase(contentEncoding)) {
+            return new EmbeddedChannel(ctx.channel().id(), ctx.channel().metadata().hasDisconnect(),
+                    ctx.channel().config(), new SnappyFrameDecoder());
+        }
+        if (Zstd.isAvailable() && ZSTD.contentEqualsIgnoreCase(contentEncoding)) {
+            return new EmbeddedChannel(ctx.channel().id(), ctx.channel().metadata().hasDisconnect(),
+                    ctx.channel().config(), new ZstdDecoder());
         }
         // 'identity' or unsupported
         return null;
@@ -234,7 +304,7 @@ public class DelegatingDecompressorFrameListener extends Http2FrameListenerDecor
         if (decompressor != null) {
             // The content length will be for the compressed data. Since we will decompress the data
             // this content-length will not be correct. Instead of queuing messages or delaying sending
-            // header frames...just remove the content-length header
+            // header frames just remove the content-length header.
             headers.remove(CONTENT_LENGTH);
 
             // The first time that we initialize a decompressor, decorate the local flow controller to

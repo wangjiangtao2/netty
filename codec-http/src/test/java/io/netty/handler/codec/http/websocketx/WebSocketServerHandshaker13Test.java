@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -16,6 +16,8 @@
 package io.netty.handler.codec.http.websocketx;
 
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
+import io.netty.channel.ChannelHandler;
 import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.handler.codec.http.DefaultFullHttpRequest;
 import io.netty.handler.codec.http.FullHttpRequest;
@@ -27,13 +29,36 @@ import io.netty.handler.codec.http.HttpRequestDecoder;
 import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpResponseDecoder;
 import io.netty.handler.codec.http.HttpResponseEncoder;
+import io.netty.handler.codec.http.HttpServerCodec;
+import io.netty.handler.codec.http.HttpVersion;
 import io.netty.util.ReferenceCountUtil;
-import org.junit.Assert;
-import org.junit.Test;
+import io.netty.util.ReferenceCounted;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.function.Executable;
 
-import static io.netty.handler.codec.http.HttpVersion.*;
+import java.util.Iterator;
 
-public class WebSocketServerHandshaker13Test {
+import static io.netty.handler.codec.http.HttpVersion.HTTP_1_1;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
+
+public class WebSocketServerHandshaker13Test extends WebSocketServerHandshakerTest {
+
+    @Override
+    protected WebSocketServerHandshaker newHandshaker(String webSocketURL, String subprotocols,
+            WebSocketDecoderConfig decoderConfig) {
+        return new WebSocketServerHandshaker13(webSocketURL, subprotocols, decoderConfig);
+    }
+
+    @Override
+    protected WebSocketVersion webSocketVersion() {
+        return WebSocketVersion.V13;
+    }
 
     @Test
     public void testPerformOpeningHandshake() {
@@ -47,8 +72,127 @@ public class WebSocketServerHandshaker13Test {
 
     private static void testPerformOpeningHandshake0(boolean subProtocol) {
         EmbeddedChannel ch = new EmbeddedChannel(
-                new HttpObjectAggregator(42), new HttpRequestDecoder(), new HttpResponseEncoder());
+                new HttpObjectAggregator(42), new HttpResponseEncoder(), new HttpRequestDecoder());
 
+        if (subProtocol) {
+            testUpgrade0(ch, new WebSocketServerHandshaker13(
+                    "ws://example.com/chat", "chat", false, Integer.MAX_VALUE, false));
+        } else {
+            testUpgrade0(ch, new WebSocketServerHandshaker13(
+                    "ws://example.com/chat", null, false, Integer.MAX_VALUE, false));
+        }
+        assertFalse(ch.finish());
+    }
+
+    @Test
+    public void testCloseReasonWithEncoderAndDecoder() {
+        testCloseReason0(new HttpResponseEncoder(), new HttpRequestDecoder());
+    }
+
+    @Test
+    public void testCloseReasonWithCodec() {
+        testCloseReason0(new HttpServerCodec());
+    }
+
+    @Test
+    public void testHandshakeExceptionWhenConnectionHeaderIsAbsent() {
+        final WebSocketServerHandshaker serverHandshaker = newHandshaker("ws://example.com/chat",
+                                                                         "chat", WebSocketDecoderConfig.DEFAULT);
+        final FullHttpRequest request = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET,
+                                                                   "ws://example.com/chat");
+        request.headers()
+               .set(HttpHeaderNames.HOST, "server.example.com")
+               .set(HttpHeaderNames.UPGRADE, HttpHeaderValues.WEBSOCKET)
+               .set(HttpHeaderNames.SEC_WEBSOCKET_KEY, "dGhlIHNhbXBsZSBub25jZQ==")
+               .set(HttpHeaderNames.SEC_WEBSOCKET_ORIGIN, "http://example.com")
+               .set(HttpHeaderNames.SEC_WEBSOCKET_PROTOCOL, "chat, superchat")
+               .set(HttpHeaderNames.SEC_WEBSOCKET_VERSION, "13");
+        Throwable exception = assertThrows(WebSocketServerHandshakeException.class, new Executable() {
+            @Override
+            public void execute() throws Throwable {
+                serverHandshaker.handshake(null, request, null, null);
+            }
+        });
+
+        assertEquals("not a WebSocket request: a |Connection| header must includes a token 'Upgrade'",
+                     exception.getMessage());
+        assertTrue(request.release());
+    }
+
+    @Test
+    public void testHandshakeExceptionWhenInvalidConnectionHeader() {
+        final WebSocketServerHandshaker serverHandshaker = newHandshaker("ws://example.com/chat",
+                                                                         "chat", WebSocketDecoderConfig.DEFAULT);
+        final FullHttpRequest request = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET,
+                                                                   "ws://example.com/chat");
+        request.headers()
+               .set(HttpHeaderNames.HOST, "server.example.com")
+               .set(HttpHeaderNames.CONNECTION, "close")
+               .set(HttpHeaderNames.UPGRADE, HttpHeaderValues.WEBSOCKET)
+               .set(HttpHeaderNames.SEC_WEBSOCKET_KEY, "dGhlIHNhbXBsZSBub25jZQ==")
+               .set(HttpHeaderNames.SEC_WEBSOCKET_ORIGIN, "http://example.com")
+               .set(HttpHeaderNames.SEC_WEBSOCKET_PROTOCOL, "chat, superchat")
+               .set(HttpHeaderNames.SEC_WEBSOCKET_VERSION, "13");
+        Throwable exception = assertThrows(WebSocketServerHandshakeException.class, new Executable() {
+            @Override
+            public void execute() throws Throwable {
+                serverHandshaker.handshake(null, request, null, null);
+            }
+        });
+
+        assertEquals("not a WebSocket request: a |Connection| header must includes a token 'Upgrade'",
+                     exception.getMessage());
+        assertTrue(request.release());
+    }
+
+    @Test
+    public void testHandshakeExceptionWhenInvalidUpgradeHeader() {
+        final WebSocketServerHandshaker serverHandshaker = newHandshaker("ws://example.com/chat",
+                                                                         "chat", WebSocketDecoderConfig.DEFAULT);
+        final FullHttpRequest request = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET,
+                                                                   "ws://example.com/chat");
+        request.headers()
+               .set(HttpHeaderNames.HOST, "server.example.com")
+               .set(HttpHeaderNames.CONNECTION, HttpHeaderValues.UPGRADE)
+               .set(HttpHeaderNames.UPGRADE, "my_websocket")
+               .set(HttpHeaderNames.SEC_WEBSOCKET_KEY, "dGhlIHNhbXBsZSBub25jZQ==")
+               .set(HttpHeaderNames.SEC_WEBSOCKET_ORIGIN, "http://example.com")
+               .set(HttpHeaderNames.SEC_WEBSOCKET_PROTOCOL, "chat, superchat")
+               .set(HttpHeaderNames.SEC_WEBSOCKET_VERSION, "13");
+        Throwable exception = assertThrows(WebSocketServerHandshakeException.class, new Executable() {
+            @Override
+            public void execute() throws Throwable {
+                serverHandshaker.handshake(null, request, null, null);
+            }
+        });
+
+        assertEquals("not a WebSocket request: a |Upgrade| header must containing the value 'websocket'",
+                     exception.getMessage());
+        assertTrue(request.release());
+    }
+
+    private static void testCloseReason0(ChannelHandler... handlers) {
+        EmbeddedChannel ch = new EmbeddedChannel(
+                new HttpObjectAggregator(42));
+        ch.pipeline().addLast(handlers);
+        testUpgrade0(ch, new WebSocketServerHandshaker13("ws://example.com/chat", "chat",
+                WebSocketDecoderConfig.newBuilder().maxFramePayloadLength(4).closeOnProtocolViolation(true).build()));
+
+        ch.writeOutbound(new BinaryWebSocketFrame(Unpooled.wrappedBuffer(new byte[8])));
+        ByteBuf buffer = ch.readOutbound();
+        try {
+            ch.writeInbound(buffer);
+            fail();
+        } catch (CorruptedWebSocketFrameException expected) {
+            // expected
+        }
+        ReferenceCounted closeMessage = ch.readOutbound();
+        assertInstanceOf(ByteBuf.class, closeMessage);
+        closeMessage.release();
+        assertFalse(ch.finish());
+    }
+
+    private static void testUpgrade0(EmbeddedChannel ch, WebSocketServerHandshaker13 handshaker) {
         FullHttpRequest req = new DefaultFullHttpRequest(HTTP_1_1, HttpMethod.GET, "/chat");
         req.headers().set(HttpHeaderNames.HOST, "server.example.com");
         req.headers().set(HttpHeaderNames.UPGRADE, HttpHeaderValues.WEBSOCKET);
@@ -58,13 +202,7 @@ public class WebSocketServerHandshaker13Test {
         req.headers().set(HttpHeaderNames.SEC_WEBSOCKET_PROTOCOL, "chat, superchat");
         req.headers().set(HttpHeaderNames.SEC_WEBSOCKET_VERSION, "13");
 
-        if (subProtocol) {
-            new WebSocketServerHandshaker13(
-                    "ws://example.com/chat", "chat", false, Integer.MAX_VALUE, false).handshake(ch, req);
-        } else {
-            new WebSocketServerHandshaker13(
-                    "ws://example.com/chat", null, false, Integer.MAX_VALUE, false).handshake(ch, req);
-        }
+        handshaker.handshake(ch, req);
 
         ByteBuf resBuf = ch.readOutbound();
 
@@ -72,12 +210,14 @@ public class WebSocketServerHandshaker13Test {
         ch2.writeInbound(resBuf);
         HttpResponse res = ch2.readInbound();
 
-        Assert.assertEquals(
+        assertEquals(
                 "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=", res.headers().get(HttpHeaderNames.SEC_WEBSOCKET_ACCEPT));
-        if (subProtocol) {
-            Assert.assertEquals("chat", res.headers().get(HttpHeaderNames.SEC_WEBSOCKET_PROTOCOL));
+        Iterator<String> subProtocols = handshaker.subprotocols().iterator();
+        if (subProtocols.hasNext()) {
+            assertEquals(subProtocols.next(),
+                    res.headers().get(HttpHeaderNames.SEC_WEBSOCKET_PROTOCOL));
         } else {
-            Assert.assertNull(res.headers().get(HttpHeaderNames.SEC_WEBSOCKET_PROTOCOL));
+            assertNull(res.headers().get(HttpHeaderNames.SEC_WEBSOCKET_PROTOCOL));
         }
         ReferenceCountUtil.release(res);
         req.release();

@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -59,7 +59,7 @@ import java.net.SocketAddress;
  * implementation where the {@link Channel} belongs to.  For example, you could
  * write a new {@link Channel} implementation that creates the sub-channels that
  * share one socket connection, as <a href="http://beepcore.org/">BEEP</a> and
- * <a href="http://en.wikipedia.org/wiki/Secure_Shell">SSH</a> do.
+ * <a href="https://en.wikipedia.org/wiki/Secure_Shell">SSH</a> do.
  *
  * <h3>Downcast to access transport-specific operations</h3>
  * <p>
@@ -157,18 +157,25 @@ public interface Channel extends AttributeMap, ChannelOutboundInvoker, Comparabl
      * requested write operation immediately.  Any write requests made when
      * this method returns {@code false} are queued until the I/O thread is
      * ready to process the queued write requests.
+     *
+     * {@link WriteBufferWaterMark} can be used to configure on which condition
+     * the write buffer would cause this channel to change writability.
      */
     boolean isWritable();
 
     /**
      * Get how many bytes can be written until {@link #isWritable()} returns {@code false}.
      * This quantity will always be non-negative. If {@link #isWritable()} is {@code false} then 0.
+     *
+     * {@link WriteBufferWaterMark} can be used to define writability settings.
      */
     long bytesBeforeUnwritable();
 
     /**
      * Get how many bytes must be drained from underlying buffers until {@link #isWritable()} returns {@code true}.
      * This quantity will always be non-negative. If {@link #isWritable()} is {@code true} then 0.
+     *
+     * {@link WriteBufferWaterMark} can be used to define writability settings.
      */
     long bytesBeforeWritable();
 

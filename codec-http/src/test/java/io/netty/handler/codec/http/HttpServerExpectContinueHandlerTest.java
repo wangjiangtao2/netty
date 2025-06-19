@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -17,10 +17,11 @@ package io.netty.handler.codec.http;
 
 import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.util.ReferenceCountUtil;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-import static org.hamcrest.CoreMatchers.*;
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class HttpServerExpectContinueHandlerTest {
 
@@ -40,8 +41,8 @@ public class HttpServerExpectContinueHandlerTest {
         channel.writeInbound(request);
         HttpResponse response = channel.readOutbound();
 
-        assertThat(response.status(), is(HttpResponseStatus.CONTINUE));
-        assertThat(response.headers().get("foo"), is("bar"));
+        assertEquals(HttpResponseStatus.CONTINUE, response.status());
+        assertEquals("bar", response.headers().get("foo"));
         ReferenceCountUtil.release(response);
 
         HttpRequest processedRequest = channel.readInbound();
@@ -73,7 +74,7 @@ public class HttpServerExpectContinueHandlerTest {
         channel.writeInbound(request);
         HttpResponse response = channel.readOutbound();
 
-        assertThat(response.status(), is(HttpResponseStatus.REQUEST_ENTITY_TOO_LARGE));
+        assertEquals(HttpResponseStatus.REQUEST_ENTITY_TOO_LARGE, response.status());
         ReferenceCountUtil.release(response);
 
         // request was swallowed

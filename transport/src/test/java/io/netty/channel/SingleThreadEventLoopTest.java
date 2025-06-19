@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -20,10 +20,10 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.Appender;
 import io.netty.channel.local.LocalChannel;
 import io.netty.util.concurrent.EventExecutor;
-import org.hamcrest.MatcherAssert;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
@@ -40,8 +40,12 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
-import static org.hamcrest.Matchers.*;
-import static org.junit.Assert.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 public class SingleThreadEventLoopTest {
 
@@ -54,14 +58,14 @@ public class SingleThreadEventLoopTest {
     private SingleThreadEventLoopB loopB;
     private SingleThreadEventLoopC loopC;
 
-    @Before
+    @BeforeEach
     public void newEventLoop() {
         loopA = new SingleThreadEventLoopA();
         loopB = new SingleThreadEventLoopB();
         loopC = new SingleThreadEventLoopC();
     }
 
-    @After
+    @AfterEach
     public void stopEventLoop() {
         if (!loopA.isShuttingDown()) {
             loopA.shutdownGracefully(0, 0, TimeUnit.MILLISECONDS);
@@ -165,16 +169,17 @@ public class SingleThreadEventLoopTest {
                 endTime.set(System.nanoTime());
             }
         }, 500, TimeUnit.MILLISECONDS).get();
-        assertThat(endTime.get() - startTime,
-                   is(greaterThanOrEqualTo(TimeUnit.MILLISECONDS.toNanos(500))));
+        assertThat(endTime.get() - startTime).isGreaterThanOrEqualTo(TimeUnit.MILLISECONDS.toNanos(500));
     }
 
-    @Test(timeout = 5000)
+    @Test
+    @Timeout(value = 5000, unit = TimeUnit.MILLISECONDS)
     public void scheduleTaskAtFixedRateA() throws Exception {
         testScheduleTaskAtFixedRate(loopA);
     }
 
-    @Test(timeout = 5000)
+    @Test
+    @Timeout(value = 5000, unit = TimeUnit.MILLISECONDS)
     public void scheduleTaskAtFixedRateB() throws Exception {
         testScheduleTaskAtFixedRate(loopB);
     }
@@ -210,19 +215,21 @@ public class SingleThreadEventLoopTest {
             }
 
             long timepoint = t - firstTimestamp;
-            assertThat(timepoint, is(greaterThanOrEqualTo(TimeUnit.MILLISECONDS.toNanos(100 * cnt + 80))));
-            assertThat(timepoint, is(lessThan(TimeUnit.MILLISECONDS.toNanos(100 * (cnt + 1) + 20))));
+            assertThat(timepoint).isGreaterThanOrEqualTo(TimeUnit.MILLISECONDS.toNanos(100 * cnt + 80));
+            assertThat(timepoint).isLessThan(TimeUnit.MILLISECONDS.toNanos(100 * (cnt + 1) + 20));
 
             cnt ++;
         }
     }
 
-    @Test(timeout = 5000)
+    @Test
+    @Timeout(value = 5000, unit = TimeUnit.MILLISECONDS)
     public void scheduleLaggyTaskAtFixedRateA() throws Exception {
         testScheduleLaggyTaskAtFixedRate(loopA);
     }
 
-    @Test(timeout = 5000)
+    @Test
+    @Timeout(value = 5000, unit = TimeUnit.MILLISECONDS)
     public void scheduleLaggyTaskAtFixedRateB() throws Exception {
         testScheduleLaggyTaskAtFixedRate(loopB);
     }
@@ -262,21 +269,23 @@ public class SingleThreadEventLoopTest {
 
             long diff = t.longValue() - previousTimestamp.longValue();
             if (i == 0) {
-                assertThat(diff, is(greaterThanOrEqualTo(TimeUnit.MILLISECONDS.toNanos(400))));
+                assertThat(diff).isGreaterThanOrEqualTo(TimeUnit.MILLISECONDS.toNanos(400));
             } else {
-                assertThat(diff, is(lessThanOrEqualTo(TimeUnit.MILLISECONDS.toNanos(10))));
+                assertThat(diff).isLessThanOrEqualTo(TimeUnit.MILLISECONDS.toNanos(10));
             }
             previousTimestamp = t;
             i ++;
         }
     }
 
-    @Test(timeout = 5000)
+    @Test
+    @Timeout(value = 5000, unit = TimeUnit.MILLISECONDS)
     public void scheduleTaskWithFixedDelayA() throws Exception {
         testScheduleTaskWithFixedDelay(loopA);
     }
 
-    @Test(timeout = 5000)
+    @Test
+    @Timeout(value = 5000, unit = TimeUnit.MILLISECONDS)
     public void scheduleTaskWithFixedDelayB() throws Exception {
         testScheduleTaskWithFixedDelay(loopB);
     }
@@ -310,8 +319,8 @@ public class SingleThreadEventLoopTest {
                 continue;
             }
 
-            assertThat(t.longValue() - previousTimestamp.longValue(),
-                       is(greaterThanOrEqualTo(TimeUnit.MILLISECONDS.toNanos(150))));
+            assertThat(t.longValue() - previousTimestamp.longValue()).
+                       isGreaterThanOrEqualTo(TimeUnit.MILLISECONDS.toNanos(150));
             previousTimestamp = t;
         }
     }
@@ -361,7 +370,8 @@ public class SingleThreadEventLoopTest {
         assertEquals(NUM_TASKS, ranTasks.get());
     }
 
-    @Test(timeout = 10000)
+    @Test
+    @Timeout(value = 10000, unit = TimeUnit.MILLISECONDS)
     @SuppressWarnings("deprecation")
     public void testRegistrationAfterShutdown() throws Exception {
         loopA.shutdown();
@@ -379,7 +389,7 @@ public class SingleThreadEventLoopTest {
             ChannelFuture f = loopA.register(new LocalChannel());
             f.awaitUninterruptibly();
             assertFalse(f.isSuccess());
-            assertThat(f.cause(), is(instanceOf(RejectedExecutionException.class)));
+            assertInstanceOf(RejectedExecutionException.class, f.cause());
             assertFalse(f.channel().isOpen());
         } finally {
             for (Appender<ILoggingEvent> a: appenders) {
@@ -388,7 +398,8 @@ public class SingleThreadEventLoopTest {
         }
     }
 
-    @Test(timeout = 10000)
+    @Test
+    @Timeout(value = 10000, unit = TimeUnit.MILLISECONDS)
     @SuppressWarnings("deprecation")
     public void testRegistrationAfterShutdown2() throws Exception {
         loopA.shutdown();
@@ -415,7 +426,7 @@ public class SingleThreadEventLoopTest {
             ChannelFuture f = loopA.register(promise);
             f.awaitUninterruptibly();
             assertFalse(f.isSuccess());
-            assertThat(f.cause(), is(instanceOf(RejectedExecutionException.class)));
+            assertInstanceOf(RejectedExecutionException.class, f.cause());
 
             // Ensure the listener was notified.
             assertFalse(latch.await(1, TimeUnit.SECONDS));
@@ -427,7 +438,8 @@ public class SingleThreadEventLoopTest {
         }
     }
 
-    @Test(timeout = 5000)
+    @Test
+    @Timeout(value = 5000, unit = TimeUnit.MILLISECONDS)
     public void testGracefulShutdownQuietPeriod() throws Exception {
         loopA.shutdownGracefully(1, Integer.MAX_VALUE, TimeUnit.SECONDS);
         // Keep Scheduling tasks for another 2 seconds.
@@ -438,18 +450,19 @@ public class SingleThreadEventLoopTest {
 
         long startTime = System.nanoTime();
 
-        assertThat(loopA.isShuttingDown(), is(true));
-        assertThat(loopA.isShutdown(), is(false));
+        assertTrue(loopA.isShuttingDown());
+        assertFalse(loopA.isShutdown());
 
         while (!loopA.isTerminated()) {
             loopA.awaitTermination(Integer.MAX_VALUE, TimeUnit.SECONDS);
         }
 
-        assertThat(System.nanoTime() - startTime,
-                   is(greaterThanOrEqualTo(TimeUnit.SECONDS.toNanos(1))));
+        assertThat(System.nanoTime() - startTime).
+                   isGreaterThanOrEqualTo(TimeUnit.SECONDS.toNanos(1));
     }
 
-    @Test(timeout = 5000)
+    @Test
+    @Timeout(value = 5000, unit = TimeUnit.MILLISECONDS)
     public void testGracefulShutdownTimeout() throws Exception {
         loopA.shutdownGracefully(2, 2, TimeUnit.SECONDS);
         // Keep Scheduling tasks for another 3 seconds.
@@ -469,24 +482,25 @@ public class SingleThreadEventLoopTest {
             // Expected
         }
 
-        assertThat(loopA.isShuttingDown(), is(true));
-        assertThat(loopA.isShutdown(), is(true));
+        assertTrue(loopA.isShuttingDown());
+        assertTrue(loopA.isShutdown());
     }
 
-    @Test(timeout = 10000)
+    @Test
+    @Timeout(value = 10000, unit = TimeUnit.MILLISECONDS)
     public void testOnEventLoopIteration() throws Exception {
         CountingRunnable onIteration = new CountingRunnable();
         loopC.executeAfterEventLoopIteration(onIteration);
         CountingRunnable noopTask = new CountingRunnable();
         loopC.submit(noopTask).sync();
         loopC.iterationEndSignal.take();
-        MatcherAssert.assertThat("Unexpected invocation count for regular task.",
-                                 noopTask.getInvocationCount(), is(1));
-        MatcherAssert.assertThat("Unexpected invocation count for on every eventloop iteration task.",
-                                 onIteration.getInvocationCount(), is(1));
+        assertEquals(1, noopTask.getInvocationCount(), "Unexpected invocation count for regular task.");
+        assertEquals(1, onIteration.getInvocationCount(),
+                "Unexpected invocation count for on every eventloop iteration task.");
     }
 
-    @Test(timeout = 10000)
+    @Test
+    @Timeout(value = 10000, unit = TimeUnit.MILLISECONDS)
     public void testRemoveOnEventLoopIteration() throws Exception {
         CountingRunnable onIteration1 = new CountingRunnable();
         loopC.executeAfterEventLoopIteration(onIteration1);
@@ -497,12 +511,11 @@ public class SingleThreadEventLoopTest {
         loopC.submit(noopTask).sync();
 
         loopC.iterationEndSignal.take();
-        MatcherAssert.assertThat("Unexpected invocation count for regular task.",
-                                 noopTask.getInvocationCount(), is(1));
-        MatcherAssert.assertThat("Unexpected invocation count for on every eventloop iteration task.",
-                                 onIteration2.getInvocationCount(), is(1));
-        MatcherAssert.assertThat("Unexpected invocation count for on every eventloop iteration task.",
-                                 onIteration1.getInvocationCount(), is(0));
+        assertEquals(1, noopTask.getInvocationCount(), "Unexpected invocation count for regular task.");
+        assertEquals(1, onIteration2.getInvocationCount(),
+                "Unexpected invocation count for on every eventloop iteration task.");
+        assertEquals(0, onIteration1.getInvocationCount(),
+                "Unexpected invocation count for on every eventloop iteration task.");
     }
 
     private static final class SingleThreadEventLoopA extends SingleThreadEventLoop {

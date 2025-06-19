@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -21,14 +21,14 @@ import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.handler.codec.memcache.DefaultLastMemcacheContent;
 import io.netty.handler.codec.memcache.DefaultMemcacheContent;
 import io.netty.util.CharsetUtil;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-import static org.hamcrest.CoreMatchers.*;
-import static org.hamcrest.MatcherAssert.*;
-import static org.hamcrest.core.IsNull.notNullValue;
-import static org.hamcrest.core.IsNull.nullValue;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Verifies the correct functionality of the {@link BinaryMemcacheObjectAggregator}.
@@ -64,17 +64,17 @@ public class BinaryMemcacheObjectAggregatorTest {
 
         FullBinaryMemcacheRequest request = channel.readInbound();
 
-        assertThat(request, instanceOf(FullBinaryMemcacheRequest.class));
-        assertThat(request, notNullValue());
-        assertThat(request.key(), notNullValue());
-        assertThat(request.extras(), nullValue());
+        assertInstanceOf(FullBinaryMemcacheRequest.class, request);
+        assertNotNull(request);
+        assertNotNull(request.key());
+        assertNull(request.extras());
 
-        assertThat(request.content().readableBytes(), is(8));
-        assertThat(request.content().readByte(), is((byte) 0x01));
-        assertThat(request.content().readByte(), is((byte) 0x02));
+        assertEquals(8, request.content().readableBytes());
+        assertEquals((byte) 0x01, request.content().readByte());
+        assertEquals((byte) 0x02, request.content().readByte());
         request.release();
 
-        assertThat(channel.readInbound(), nullValue());
+        assertNull(channel.readInbound());
 
         assertFalse(channel.finish());
     }
@@ -100,14 +100,14 @@ public class BinaryMemcacheObjectAggregatorTest {
 
         assertTrue(channel.writeOutbound(request, content1, content2));
 
-        assertThat(channel.outboundMessages().size(), is(3));
+        assertEquals(3, channel.outboundMessages().size());
         assertTrue(channel.writeInbound(channel.readOutbound(), channel.readOutbound(), channel.readOutbound()));
 
         FullBinaryMemcacheRequest read = channel.readInbound();
-        assertThat(read, notNullValue());
-        assertThat(read.key().toString(CharsetUtil.UTF_8), is("Netty"));
-        assertThat(read.extras().toString(CharsetUtil.UTF_8), is("extras"));
-        assertThat(read.content().toString(CharsetUtil.UTF_8), is("Netty Rocks!"));
+        assertNotNull(read);
+        assertEquals("Netty", read.key().toString(CharsetUtil.UTF_8));
+        assertEquals("extras", read.extras().toString(CharsetUtil.UTF_8));
+        assertEquals("Netty Rocks!", read.content().toString(CharsetUtil.UTF_8));
 
         read.release();
         assertFalse(channel.finish());

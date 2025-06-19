@@ -1,11 +1,11 @@
 /*
- * Copyright 2012 The Netty Project
+ * Copyright 2019 The Netty Project
  *
  * The Netty Project licenses this file to you under the Apache License,
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -15,40 +15,46 @@
  */
 package io.netty.handler.codec.http.websocketx;
 
+import java.nio.channels.ClosedChannelException;
+import java.util.Collections;
+import java.util.LinkedHashSet;
+import java.util.Set;
+
+import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
+import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelInboundHandlerAdapter;
+import io.netty.channel.ChannelOutboundInvoker;
 import io.netty.channel.ChannelPipeline;
 import io.netty.channel.ChannelPromise;
-import io.netty.channel.SimpleChannelInboundHandler;
+import io.netty.handler.codec.http.DefaultFullHttpRequest;
+import io.netty.handler.codec.http.EmptyHttpHeaders;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpContentCompressor;
 import io.netty.handler.codec.http.HttpHeaders;
+import io.netty.handler.codec.http.HttpObject;
 import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpRequestDecoder;
 import io.netty.handler.codec.http.HttpResponseEncoder;
 import io.netty.handler.codec.http.HttpServerCodec;
+import io.netty.handler.codec.http.HttpUtil;
+import io.netty.handler.codec.http.LastHttpContent;
 import io.netty.util.ReferenceCountUtil;
 import io.netty.util.internal.EmptyArrays;
-import io.netty.util.internal.ThrowableUtil;
+import io.netty.util.internal.ObjectUtil;
 import io.netty.util.internal.logging.InternalLogger;
 import io.netty.util.internal.logging.InternalLoggerFactory;
-
-import java.nio.channels.ClosedChannelException;
-import java.util.Collections;
-import java.util.LinkedHashSet;
-import java.util.Set;
 
 /**
  * Base class for server side web socket opening and closing handshakes
  */
 public abstract class WebSocketServerHandshaker {
     protected static final InternalLogger logger = InternalLoggerFactory.getInstance(WebSocketServerHandshaker.class);
-    private static final ClosedChannelException CLOSED_CHANNEL_EXCEPTION = ThrowableUtil.unknownStackTrace(
-            new ClosedChannelException(), WebSocketServerHandshaker.class, "handshake(...)");
 
     private final String uri;
 
@@ -56,7 +62,7 @@ public abstract class WebSocketServerHandshaker {
 
     private final WebSocketVersion version;
 
-    private final int maxFramePayloadLength;
+    private final WebSocketDecoderConfig decoderConfig;
 
     private String selectedSubprotocol;
 
@@ -81,6 +87,26 @@ public abstract class WebSocketServerHandshaker {
     protected WebSocketServerHandshaker(
             WebSocketVersion version, String uri, String subprotocols,
             int maxFramePayloadLength) {
+        this(version, uri, subprotocols, WebSocketDecoderConfig.newBuilder()
+            .maxFramePayloadLength(maxFramePayloadLength)
+            .build());
+    }
+
+    /**
+     * Constructor specifying the destination web socket location
+     *
+     * @param version
+     *            the protocol version
+     * @param uri
+     *            URL for web socket communications. e.g "ws://myhost.com/mypath". Subsequent web socket frames will be
+     *            sent to this URL.
+     * @param subprotocols
+     *            CSV of supported protocols. Null if sub protocols not supported.
+     * @param decoderConfig
+     *            Frames decoder configuration.
+     */
+    protected WebSocketServerHandshaker(
+            WebSocketVersion version, String uri, String subprotocols, WebSocketDecoderConfig decoderConfig) {
         this.version = version;
         this.uri = uri;
         if (subprotocols != null) {
@@ -92,7 +118,7 @@ public abstract class WebSocketServerHandshaker {
         } else {
             this.subprotocols = EmptyArrays.EMPTY_STRINGS;
         }
-        this.maxFramePayloadLength = maxFramePayloadLength;
+        this.decoderConfig = ObjectUtil.checkNotNull(decoderConfig, "decoderConfig");
     }
 
     /**
@@ -124,7 +150,16 @@ public abstract class WebSocketServerHandshaker {
      * @return The maximum length for a frame's payload
      */
     public int maxFramePayloadLength() {
-        return maxFramePayloadLength;
+        return decoderConfig.maxFramePayloadLength();
+    }
+
+    /**
+     * Gets this decoder configuration.
+     *
+     * @return This decoder configuration.
+     */
+    public WebSocketDecoderConfig decoderConfig() {
+        return decoderConfig;
     }
 
     /**
@@ -175,15 +210,16 @@ public abstract class WebSocketServerHandshaker {
         ChannelHandlerContext ctx = p.context(HttpRequestDecoder.class);
         final String encoderName;
         if (ctx == null) {
-            // this means the user use a HttpServerCodec
+            // this means the user use an HttpServerCodec
             ctx = p.context(HttpServerCodec.class);
             if (ctx == null) {
                 promise.setFailure(
                         new IllegalStateException("No HttpDecoder and no HttpServerCodec in the pipeline"));
+                response.release();
                 return promise;
             }
-            p.addBefore(ctx.name(), "wsdecoder", newWebsocketDecoder());
             p.addBefore(ctx.name(), "wsencoder", newWebSocketEncoder());
+            p.addBefore(ctx.name(), "wsdecoder", newWebsocketDecoder());
             encoderName = ctx.name();
         } else {
             p.replace(ctx.name(), "wsdecoder", newWebsocketDecoder());
@@ -239,17 +275,18 @@ public abstract class WebSocketServerHandshaker {
      */
     public final ChannelFuture handshake(final Channel channel, HttpRequest req,
                                          final HttpHeaders responseHeaders, final ChannelPromise promise) {
-
         if (req instanceof FullHttpRequest) {
             return handshake(channel, (FullHttpRequest) req, responseHeaders, promise);
         }
+
         if (logger.isDebugEnabled()) {
             logger.debug("{} WebSocket version {} server handshake", channel, version());
         }
+
         ChannelPipeline p = channel.pipeline();
         ChannelHandlerContext ctx = p.context(HttpRequestDecoder.class);
         if (ctx == null) {
-            // this means the user use a HttpServerCodec
+            // this means the user use an HttpServerCodec
             ctx = p.context(HttpServerCodec.class);
             if (ctx == null) {
                 promise.setFailure(
@@ -257,18 +294,31 @@ public abstract class WebSocketServerHandshaker {
                 return promise;
             }
         }
-        // Add aggregator and ensure we feed the HttpRequest so it is aggregated. A limit o 8192 should be more then
-        // enough for the websockets handshake payload.
-        //
-        // TODO: Make handshake work without HttpObjectAggregator at all.
-        String aggregatorName = "httpAggregator";
-        p.addAfter(ctx.name(), aggregatorName, new HttpObjectAggregator(8192));
-        p.addAfter(aggregatorName, "handshaker", new SimpleChannelInboundHandler<FullHttpRequest>() {
+
+        String aggregatorCtx = ctx.name();
+        if (HttpUtil.isContentLengthSet(req) || HttpUtil.isTransferEncodingChunked(req) ||
+            version == WebSocketVersion.V00) {
+            // Add aggregator and ensure we feed the HttpRequest so it is aggregated. A limit of 8192 should be
+            // more then enough for the websockets handshake payload.
+            aggregatorCtx = "httpAggregator";
+            p.addAfter(ctx.name(), aggregatorCtx, new HttpObjectAggregator(8192));
+        }
+
+        p.addAfter(aggregatorCtx, "handshaker", new ChannelInboundHandlerAdapter() {
+
+            private FullHttpRequest fullHttpRequest;
+
             @Override
-            protected void channelRead0(ChannelHandlerContext ctx, FullHttpRequest msg) throws Exception {
-                // Remove ourself and do the actual handshake
-                ctx.pipeline().remove(this);
-                handshake(channel, msg, responseHeaders, promise);
+            public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+                if (msg instanceof HttpObject) {
+                    try {
+                        handleHandshakeRequest(ctx, (HttpObject) msg);
+                    } finally {
+                        ReferenceCountUtil.release(msg);
+                    }
+                } else {
+                    super.channelRead(ctx, msg);
+                }
             }
 
             @Override
@@ -281,9 +331,57 @@ public abstract class WebSocketServerHandshaker {
 
             @Override
             public void channelInactive(ChannelHandlerContext ctx) throws Exception {
-                // Fail promise if Channel was closed
-                promise.tryFailure(CLOSED_CHANNEL_EXCEPTION);
-                ctx.fireChannelInactive();
+                try {
+                    // Fail promise if Channel was closed
+                    if (!promise.isDone()) {
+                        promise.tryFailure(new ClosedChannelException());
+                    }
+                    ctx.fireChannelInactive();
+                } finally {
+                    releaseFullHttpRequest();
+                }
+            }
+
+            @Override
+            public void handlerRemoved(ChannelHandlerContext ctx) throws Exception {
+                releaseFullHttpRequest();
+            }
+
+            private void handleHandshakeRequest(ChannelHandlerContext ctx, HttpObject httpObject) {
+                if (httpObject instanceof FullHttpRequest) {
+                    ctx.pipeline().remove(this);
+                    handshake(channel, (FullHttpRequest) httpObject, responseHeaders, promise);
+                    return;
+                }
+
+                if (httpObject instanceof LastHttpContent) {
+                    assert fullHttpRequest != null;
+                    FullHttpRequest handshakeRequest = fullHttpRequest;
+                    fullHttpRequest = null;
+                    try {
+                        ctx.pipeline().remove(this);
+                        handshake(channel, handshakeRequest, responseHeaders, promise);
+                    } finally {
+                        handshakeRequest.release();
+                    }
+                    return;
+                }
+
+                if (httpObject instanceof HttpRequest) {
+                    HttpRequest httpRequest = (HttpRequest) httpObject;
+                    fullHttpRequest = new DefaultFullHttpRequest(httpRequest.protocolVersion(), httpRequest.method(),
+                        httpRequest.uri(), Unpooled.EMPTY_BUFFER, httpRequest.headers(), EmptyHttpHeaders.INSTANCE);
+                    if (httpRequest.decoderResult().isFailure()) {
+                        fullHttpRequest.setDecoderResult(httpRequest.decoderResult());
+                    }
+                }
+            }
+
+            private void releaseFullHttpRequest() {
+                if (fullHttpRequest != null) {
+                    fullHttpRequest.release();
+                    fullHttpRequest = null;
+                }
             }
         });
         try {
@@ -300,35 +398,68 @@ public abstract class WebSocketServerHandshaker {
     protected abstract FullHttpResponse newHandshakeResponse(FullHttpRequest req,
                                          HttpHeaders responseHeaders);
     /**
-     * Performs the closing handshake
+     * Performs the closing handshake.
+     *
+     * When called from within a {@link ChannelHandler} you most likely want to use
+     * {@link #close(ChannelHandlerContext, CloseWebSocketFrame)}.
      *
      * @param channel
-     *            Channel
+     *            the {@link Channel} to use.
      * @param frame
-     *            Closing Frame that was received
+     *            Closing Frame that was received.
      */
     public ChannelFuture close(Channel channel, CloseWebSocketFrame frame) {
-        if (channel == null) {
-            throw new NullPointerException("channel");
-        }
+        ObjectUtil.checkNotNull(channel, "channel");
         return close(channel, frame, channel.newPromise());
     }
 
     /**
-     * Performs the closing handshake
+     * Performs the closing handshake.
+     *
+     * When called from within a {@link ChannelHandler} you most likely want to use
+     * {@link #close(ChannelHandlerContext, CloseWebSocketFrame, ChannelPromise)}.
      *
      * @param channel
-     *            Channel
+     *            the {@link Channel} to use.
      * @param frame
-     *            Closing Frame that was received
+     *            Closing Frame that was received.
      * @param promise
      *            the {@link ChannelPromise} to be notified when the closing handshake is done
      */
     public ChannelFuture close(Channel channel, CloseWebSocketFrame frame, ChannelPromise promise) {
-        if (channel == null) {
-            throw new NullPointerException("channel");
-        }
-        return channel.writeAndFlush(frame, promise).addListener(ChannelFutureListener.CLOSE);
+        return close0(channel, frame, promise);
+    }
+
+    /**
+     * Performs the closing handshake.
+     *
+     * @param ctx
+     *            the {@link ChannelHandlerContext} to use.
+     * @param frame
+     *            Closing Frame that was received.
+     */
+    public ChannelFuture close(ChannelHandlerContext ctx, CloseWebSocketFrame frame) {
+        ObjectUtil.checkNotNull(ctx, "ctx");
+        return close(ctx, frame, ctx.newPromise());
+    }
+
+    /**
+     * Performs the closing handshake.
+     *
+     * @param ctx
+     *            the {@link ChannelHandlerContext} to use.
+     * @param frame
+     *            Closing Frame that was received.
+     * @param promise
+     *            the {@link ChannelPromise} to be notified when the closing handshake is done.
+     */
+    public ChannelFuture close(ChannelHandlerContext ctx, CloseWebSocketFrame frame, ChannelPromise promise) {
+        ObjectUtil.checkNotNull(ctx, "ctx");
+        return close0(ctx, frame, promise).addListener(ChannelFutureListener.CLOSE);
+    }
+
+    private ChannelFuture close0(ChannelOutboundInvoker invoker, CloseWebSocketFrame frame, ChannelPromise promise) {
+        return invoker.writeAndFlush(frame, promise).addListener(ChannelFutureListener.CLOSE);
     }
 
     /**

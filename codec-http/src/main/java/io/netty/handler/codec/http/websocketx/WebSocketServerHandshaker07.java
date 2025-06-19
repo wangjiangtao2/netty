@@ -1,11 +1,11 @@
 /*
- * Copyright 2012 The Netty Project
+ * Copyright 2019 The Netty Project
  *
  * The Netty Project licenses this file to you under the Apache License,
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -21,24 +21,23 @@ import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpHeaders;
+import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.util.CharsetUtil;
 
+import static io.netty.handler.codec.http.HttpMethod.GET;
 import static io.netty.handler.codec.http.HttpVersion.*;
 
 /**
  * <p>
  * Performs server side opening and closing handshakes for web socket specification version <a
- * href="http://tools.ietf.org/html/draft-ietf-hybi-thewebsocketprotocol-10" >draft-ietf-hybi-thewebsocketprotocol-
+ * href="https://tools.ietf.org/html/draft-ietf-hybi-thewebsocketprotocol-10" >draft-ietf-hybi-thewebsocketprotocol-
  * 10</a>
  * </p>
  */
 public class WebSocketServerHandshaker07 extends WebSocketServerHandshaker {
 
     public static final String WEBSOCKET_07_ACCEPT_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-
-    private final boolean allowExtensions;
-    private final boolean allowMaskMismatch;
 
     /**
      * Constructor specifying the destination web socket location
@@ -79,15 +78,27 @@ public class WebSocketServerHandshaker07 extends WebSocketServerHandshaker {
     public WebSocketServerHandshaker07(
             String webSocketURL, String subprotocols, boolean allowExtensions, int maxFramePayloadLength,
             boolean allowMaskMismatch) {
-        super(WebSocketVersion.V07, webSocketURL, subprotocols, maxFramePayloadLength);
-        this.allowExtensions = allowExtensions;
-        this.allowMaskMismatch = allowMaskMismatch;
+        this(webSocketURL, subprotocols, WebSocketDecoderConfig.newBuilder()
+            .allowExtensions(allowExtensions)
+            .maxFramePayloadLength(maxFramePayloadLength)
+            .allowMaskMismatch(allowMaskMismatch)
+            .build());
+    }
+
+    /**
+     * Constructor specifying the destination web socket location
+     *
+     * @param decoderConfig
+     *            Frames decoder configuration.
+     */
+    public WebSocketServerHandshaker07(String webSocketURL, String subprotocols, WebSocketDecoderConfig decoderConfig) {
+        super(WebSocketVersion.V07, webSocketURL, subprotocols, decoderConfig);
     }
 
     /**
      * <p>
      * Handle the web socket handshake for the web socket specification <a href=
-     * "http://tools.ietf.org/html/draft-ietf-hybi-thewebsocketprotocol-07">HyBi version 7</a>.
+     * "https://tools.ietf.org/html/draft-ietf-hybi-thewebsocketprotocol-07">HyBi version 7</a>.
      * </p>
      *
      * <p>
@@ -119,18 +130,24 @@ public class WebSocketServerHandshaker07 extends WebSocketServerHandshaker {
      */
     @Override
     protected FullHttpResponse newHandshakeResponse(FullHttpRequest req, HttpHeaders headers) {
+        HttpMethod method = req.method();
+        if (!GET.equals(method)) {
+            throw new WebSocketServerHandshakeException("Invalid WebSocket handshake method: " + method, req);
+        }
+
+        CharSequence key = req.headers().get(HttpHeaderNames.SEC_WEBSOCKET_KEY);
+        if (key == null) {
+            throw new WebSocketServerHandshakeException("not a WebSocket request: missing key", req);
+        }
 
         FullHttpResponse res =
-                new DefaultFullHttpResponse(HTTP_1_1, HttpResponseStatus.SWITCHING_PROTOCOLS);
+                new DefaultFullHttpResponse(HTTP_1_1, HttpResponseStatus.SWITCHING_PROTOCOLS,
+                        req.content().alloc().buffer(0));
 
         if (headers != null) {
             res.headers().add(headers);
         }
 
-        CharSequence key = req.headers().get(HttpHeaderNames.SEC_WEBSOCKET_KEY);
-        if (key == null) {
-            throw new WebSocketHandshakeException("not a WebSocket request: missing key");
-        }
         String acceptSeed = key + WEBSOCKET_07_ACCEPT_GUID;
         byte[] sha1 = WebSocketUtil.sha1(acceptSeed.getBytes(CharsetUtil.US_ASCII));
         String accept = WebSocketUtil.base64(sha1);
@@ -139,9 +156,9 @@ public class WebSocketServerHandshaker07 extends WebSocketServerHandshaker {
             logger.debug("WebSocket version 07 server handshake key: {}, response: {}.", key, accept);
         }
 
-        res.headers().add(HttpHeaderNames.UPGRADE, HttpHeaderValues.WEBSOCKET);
-        res.headers().add(HttpHeaderNames.CONNECTION, HttpHeaderValues.UPGRADE);
-        res.headers().add(HttpHeaderNames.SEC_WEBSOCKET_ACCEPT, accept);
+        res.headers().set(HttpHeaderNames.UPGRADE, HttpHeaderValues.WEBSOCKET)
+                     .set(HttpHeaderNames.CONNECTION, HttpHeaderValues.UPGRADE)
+                     .set(HttpHeaderNames.SEC_WEBSOCKET_ACCEPT, accept);
 
         String subprotocols = req.headers().get(HttpHeaderNames.SEC_WEBSOCKET_PROTOCOL);
         if (subprotocols != null) {
@@ -151,7 +168,7 @@ public class WebSocketServerHandshaker07 extends WebSocketServerHandshaker {
                     logger.debug("Requested subprotocol(s) not supported: {}", subprotocols);
                 }
             } else {
-                res.headers().add(HttpHeaderNames.SEC_WEBSOCKET_PROTOCOL, selectedSubprotocol);
+                res.headers().set(HttpHeaderNames.SEC_WEBSOCKET_PROTOCOL, selectedSubprotocol);
             }
         }
         return res;
@@ -159,7 +176,7 @@ public class WebSocketServerHandshaker07 extends WebSocketServerHandshaker {
 
     @Override
     protected WebSocketFrameDecoder newWebsocketDecoder() {
-        return new WebSocket07FrameDecoder(true, allowExtensions, maxFramePayloadLength(), allowMaskMismatch);
+        return new WebSocket07FrameDecoder(decoderConfig());
     }
 
     @Override

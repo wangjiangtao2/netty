@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -33,14 +33,20 @@ import java.util.zip.Checksum;
  * byte array ({@link ByteBuf#hasArray()} is {@code true}) or not.
  */
 abstract class ByteBufChecksum implements Checksum {
-    private static final Method ADLER32_UPDATE_METHOD;
-    private static final Method CRC32_UPDATE_METHOD;
 
-    static {
-        // See if we can use fast-path when using ByteBuf that is not heap based as Adler32 and CRC32 added support
-        // for update(ByteBuffer) in JDK8.
-        ADLER32_UPDATE_METHOD = updateByteBuffer(new Adler32());
-        CRC32_UPDATE_METHOD = updateByteBuffer(new CRC32());
+    /**
+     * on OpenJDK Adler32 and CRC32 both calls ZipUtils.loadLibrary on class init.
+     */
+    private static class ZlibChecksumMethods {
+        private static final Method ADLER32_UPDATE_METHOD;
+        private static final Method CRC32_UPDATE_METHOD;
+
+        static {
+            // See if we can use fast-path when using ByteBuf that is not heap based as Adler32 and CRC32 added support
+            // for update(ByteBuffer) in JDK8.
+            ADLER32_UPDATE_METHOD = updateByteBuffer(new Adler32());
+            CRC32_UPDATE_METHOD = updateByteBuffer(new CRC32());
+        }
     }
 
     private final ByteProcessor updateProcessor = new ByteProcessor() {
@@ -55,7 +61,7 @@ abstract class ByteBufChecksum implements Checksum {
         if (PlatformDependent.javaVersion() >= 8) {
             try {
                 Method method = checksum.getClass().getDeclaredMethod("update", ByteBuffer.class);
-                method.invoke(method, ByteBuffer.allocate(1));
+                method.invoke(checksum, ByteBuffer.allocate(1));
                 return method;
             } catch (Throwable ignore) {
                 return null;
@@ -66,11 +72,14 @@ abstract class ByteBufChecksum implements Checksum {
 
     static ByteBufChecksum wrapChecksum(Checksum checksum) {
         ObjectUtil.checkNotNull(checksum, "checksum");
-        if (checksum instanceof Adler32 && ADLER32_UPDATE_METHOD != null) {
-            return new ReflectiveByteBufChecksum(checksum, ADLER32_UPDATE_METHOD);
+        if (checksum instanceof ByteBufChecksum) {
+            return (ByteBufChecksum) checksum;
         }
-        if (checksum instanceof CRC32 && CRC32_UPDATE_METHOD != null) {
-            return new ReflectiveByteBufChecksum(checksum, CRC32_UPDATE_METHOD);
+        if (checksum instanceof Adler32 && ZlibChecksumMethods.ADLER32_UPDATE_METHOD != null) {
+            return new ReflectiveByteBufChecksum(checksum, ZlibChecksumMethods.ADLER32_UPDATE_METHOD);
+        }
+        if (checksum instanceof CRC32 && ZlibChecksumMethods.CRC32_UPDATE_METHOD != null) {
+            return new ReflectiveByteBufChecksum(checksum, ZlibChecksumMethods.CRC32_UPDATE_METHOD);
         }
         return new SlowByteBufChecksum(checksum);
     }
@@ -100,7 +109,7 @@ abstract class ByteBufChecksum implements Checksum {
                 update(b.array(), b.arrayOffset() + off, len);
             } else {
                 try {
-                    method.invoke(checksum, CompressionUtil.safeNioBuffer(b));
+                    method.invoke(checksum, CompressionUtil.safeNioBuffer(b, off, len));
                 } catch (Throwable cause) {
                     throw new Error();
                 }

@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -29,7 +29,6 @@ import java.util.NoSuchElementException;
 import java.util.Set;
 
 import static io.netty.handler.codec.CharSequenceValueConverter.INSTANCE;
-import static io.netty.handler.codec.http.DefaultHttpHeaders.HttpNameValidator;
 import static io.netty.util.AsciiString.contentEquals;
 import static io.netty.util.AsciiString.contentEqualsIgnoreCase;
 
@@ -69,7 +68,7 @@ public final class ReadOnlyHttpHeaders extends HttpHeaders {
 
     private static void validateHeaders(CharSequence... keyValuePairs) {
         for (int i = 0; i < keyValuePairs.length; i += 2) {
-            HttpNameValidator.validateName(keyValuePairs[i]);
+            DefaultHttpHeadersFactory.headersFactory().getNameValidator().validateName(keyValuePairs[i]);
         }
     }
 
@@ -78,6 +77,7 @@ public final class ReadOnlyHttpHeaders extends HttpHeaders {
         for (int i = 0; i < nameValuePairs.length; i += 2) {
             CharSequence roName = nameValuePairs[i];
             if (AsciiString.hashCode(roName) == nameHash && contentEqualsIgnoreCase(roName, name)) {
+                // Suppress a warning out of bounds access since the constructor allows only pairs
                 return nameValuePairs[i + 1];
             }
         }
@@ -150,7 +150,7 @@ public final class ReadOnlyHttpHeaders extends HttpHeaders {
         List<Map.Entry<String, String>> entries = new ArrayList<Map.Entry<String, String>>(size());
         for (int i = 0; i < nameValuePairs.length; i += 2) {
             entries.add(new SimpleImmutableEntry<String, String>(nameValuePairs[i].toString(),
-                    nameValuePairs[i + 1].toString()));
+                    nameValuePairs[i + 1].toString())); // [java/index-out-of-bounds]
         }
         return entries;
     }

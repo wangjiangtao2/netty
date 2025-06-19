@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -16,10 +16,9 @@
 package io.netty.handler.codec.http2;
 
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufUtil;
 import io.netty.buffer.Unpooled;
-import io.netty.util.IllegalReferenceCountException;
 import io.netty.util.internal.StringUtil;
-import io.netty.util.internal.UnstableApi;
 
 import static io.netty.handler.codec.http2.Http2CodecUtil.verifyPadding;
 import static io.netty.util.internal.ObjectUtil.checkNotNull;
@@ -27,7 +26,6 @@ import static io.netty.util.internal.ObjectUtil.checkNotNull;
 /**
  * The default {@link Http2DataFrame} implementation.
  */
-@UnstableApi
 public final class DefaultHttp2DataFrame extends AbstractHttp2StreamFrame implements Http2DataFrame {
     private final ByteBuf content;
     private final boolean endStream;
@@ -104,10 +102,7 @@ public final class DefaultHttp2DataFrame extends AbstractHttp2StreamFrame implem
 
     @Override
     public ByteBuf content() {
-        if (content.refCnt() <= 0) {
-            throw new IllegalReferenceCountException(content.refCnt());
-        }
-        return content;
+        return ByteBufUtil.ensureAccessible(content);
     }
 
     @Override
